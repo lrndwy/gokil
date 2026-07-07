@@ -117,28 +117,11 @@ func startproject(args []string) error {
 	}
 
 	return scaffold.Create(scaffold.Options{
-		Name:        name,
-		Dir:         outDir,
-		ModPath:     name,
-		ReplacePath: computeReplacePath(outDir),
-		Infra:       infraPreset,
+		Name:    name,
+		Dir:     outDir,
+		ModPath: name,
+		Infra:   infraPreset,
 	})
-}
-
-func computeReplacePath(projectDir string) string {
-	absProject, err := filepath.Abs(projectDir)
-	if err != nil {
-		return ".."
-	}
-	absFramework, err := filepath.Abs(".")
-	if err != nil {
-		return ".."
-	}
-	rel, err := filepath.Rel(absProject, absFramework)
-	if err != nil {
-		return ".."
-	}
-	return rel
 }
 
 func makemigrations(args []string) error {

@@ -12,11 +12,10 @@ import (
 )
 
 type Options struct {
-	Name        string
-	Dir         string
-	ModPath     string
-	ReplacePath string
-	Infra       *InfraOptions
+	Name    string
+	Dir     string
+	ModPath string
+	Infra   *InfraOptions
 }
 
 func Create(opts Options) error {
@@ -33,15 +32,8 @@ func Create(opts Options) error {
 	if modPath == "" {
 		modPath = name
 	}
-	replacePath := opts.ReplacePath
-	if replacePath == "" {
-		replacePath = ".."
-	}
-	frameworkVersion := version.RequireVersion()
-	modRequire := frameworkVersion
-	if modRequire == "latest" {
-		modRequire = "v0.0.0"
-	}
+	modCfg := ResolveGoModule(dir)
+	frameworkVersion := modCfg.RequireVersion
 
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -51,8 +43,9 @@ func Create(opts Options) error {
 	templateData := TemplateData{
 		Name:             name,
 		ModPath:          modPath,
-		ReplacePath:      replacePath,
-		FrameworkVersion: modRequire,
+		ReplacePath:      modCfg.ReplacePath,
+		UseLocalReplace:  modCfg.UseReplace,
+		FrameworkVersion: frameworkVersion,
 		Infra:            BuildInfraConfig(name, infraOpts),
 	}
 	if err := validateInfra(templateData); err != nil {
@@ -105,7 +98,7 @@ func Create(opts Options) error {
 		return err
 	}
 
-	if err := tidyModule(dir, frameworkVersion); err != nil {
+	if err := tidyModule(dir, modCfg); err != nil {
 		return fmt.Errorf("go mod tidy: %w", err)
 	}
 
@@ -125,12 +118,16 @@ func Create(opts Options) error {
 	return nil
 }
 
-func tidyModule(dir, frameworkVersion string) error {
-	if frameworkVersion == "latest" {
-		get := exec.Command("go", "get", version.ModulePath+"@latest")
+func tidyModule(dir string, modCfg GoModuleConfig) error {
+	if !modCfg.UseReplace {
+		versionArg := modCfg.RequireVersion
+		if versionArg == "latest" || versionArg == "" {
+			versionArg = "latest"
+		}
+		get := exec.Command("go", "get", version.ModulePath+"@"+versionArg)
 		get.Dir = dir
 		if out, err := get.CombinedOutput(); err != nil {
-			return fmt.Errorf("go get latest: %w: %s", err, string(out))
+			return fmt.Errorf("go get %s: %w: %s", versionArg, err, string(out))
 		}
 	}
 
@@ -161,8 +158,9 @@ const goModTemplate = `module {{.ModPath}}
 go 1.22
 
 require github.com/lrndwy/gokil {{.FrameworkVersion}}
-
+{{if .UseLocalReplace}}
 replace github.com/lrndwy/gokil => {{.ReplacePath}}
+{{end}}
 `
 
 const settingsTemplate = `package {{.Name}}

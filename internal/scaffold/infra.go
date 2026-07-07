@@ -25,6 +25,7 @@ type TemplateData struct {
 	Name             string
 	ModPath          string
 	ReplacePath      string
+	UseLocalReplace  bool
 	FrameworkVersion string
 	Infra            InfraConfig
 }
