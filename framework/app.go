@@ -3,9 +3,13 @@ package framework
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
+	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 
 	"github.com/lrndwy/gokil/config"
 	"github.com/lrndwy/gokil/orm"
@@ -27,6 +31,7 @@ type App struct {
 func New(settings config.Settings, configureURLs URLConfigurator) (*App, error) {
 	var db *orm.DB
 	if settings.Database.DSN != "" {
+		log.Printf("[%s] connecting to database...", settings.AppName)
 		var err error
 		db, err = orm.Connect(
 			settings.Database.Driver,
@@ -37,6 +42,7 @@ func New(settings config.Settings, configureURLs URLConfigurator) (*App, error) 
 		if err != nil {
 			return nil, fmt.Errorf("connect database: %w", err)
 		}
+		log.Printf("[%s] database connected", settings.AppName)
 	}
 
 	provider, err := storage.New(settings.Storage)
@@ -99,6 +105,12 @@ func (a *App) Wrap(handler views.Handler) router.HandlerFunc {
 }
 
 func (a *App) Run(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	runCtx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	address := net.JoinHostPort(a.Settings.Host, strconv.Itoa(a.Settings.Port))
 	a.server = &http.Server{
 		Addr:    address,
@@ -107,6 +119,8 @@ func (a *App) Run(ctx context.Context) error {
 
 	errCh := make(chan error, 1)
 	go func() {
+		log.Printf("[%s] server listening on http://%s", a.Settings.AppName, address)
+		log.Printf("[%s] press Ctrl+C to stop", a.Settings.AppName)
 		if err := a.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			errCh <- err
 			return
@@ -115,7 +129,8 @@ func (a *App) Run(ctx context.Context) error {
 	}()
 
 	select {
-	case <-ctx.Done():
+	case <-runCtx.Done():
+		log.Printf("[%s] shutting down...", a.Settings.AppName)
 		shutdownCtx := context.Background()
 		if err := a.server.Shutdown(shutdownCtx); err != nil {
 			return err
@@ -123,6 +138,7 @@ func (a *App) Run(ctx context.Context) error {
 		if a.DB != nil {
 			_ = a.DB.Close()
 		}
+		log.Printf("[%s] stopped", a.Settings.AppName)
 		return nil
 	case err := <-errCh:
 		if err != nil {

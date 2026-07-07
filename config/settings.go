@@ -45,6 +45,7 @@ type Options struct {
 func Load(opts Options) (Settings, error) {
 	lookup := opts.Lookuper
 	if lookup == nil {
+		loadDotEnv()
 		lookup = os.LookupEnv
 	}
 
@@ -138,4 +139,26 @@ func getBool(lookup func(string) (string, bool), prefix, key string, fallback bo
 
 func envKey(prefix, key string) string {
 	return prefix + "_" + strings.ToUpper(key)
+}
+
+func loadDotEnv() {
+	data, err := os.ReadFile(".env")
+	if err != nil {
+		return
+	}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, val, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		val = strings.TrimSpace(val)
+		if _, exists := os.LookupEnv(key); !exists {
+			_ = os.Setenv(key, val)
+		}
+	}
 }
