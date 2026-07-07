@@ -14,15 +14,30 @@ type Settings struct {
 	Host     string
 	Port     int
 	Database DatabaseSettings
+	Redis    RedisSettings
 	Storage  StorageSettings
 }
 
 type DatabaseSettings struct {
 	Driver        string
 	DSN           string
+	Host          string
+	Port          int
+	User          string
+	Password      string
+	Name          string
 	MaxOpenConns  int
 	MaxIdleConns  int
 	MigrationsDir string
+}
+
+type RedisSettings struct {
+	Enabled  bool
+	URL      string
+	Host     string
+	Port     int
+	Password string
+	DB       int
 }
 
 type StorageSettings struct {
@@ -63,9 +78,22 @@ func Load(opts Options) (Settings, error) {
 		Database: DatabaseSettings{
 			Driver:        getString(lookup, prefix, "DB_DRIVER", "postgres"),
 			DSN:           getString(lookup, prefix, "DB_DSN", ""),
+			Host:          getString(lookup, prefix, "DB_HOST", "localhost"),
+			Port:          getInt(lookup, prefix, "DB_PORT", 5432),
+			User:          getString(lookup, prefix, "DB_USER", ""),
+			Password:      getString(lookup, prefix, "DB_PASSWORD", ""),
+			Name:          getString(lookup, prefix, "DB_NAME", ""),
 			MaxOpenConns:  getInt(lookup, prefix, "DB_MAX_OPEN_CONNS", 10),
 			MaxIdleConns:  getInt(lookup, prefix, "DB_MAX_IDLE_CONNS", 5),
 			MigrationsDir: getString(lookup, prefix, "DB_MIGRATIONS_DIR", "migrations"),
+		},
+		Redis: RedisSettings{
+			Enabled:  getBool(lookup, prefix, "REDIS_ENABLED", false),
+			URL:      getString(lookup, prefix, "REDIS_URL", ""),
+			Host:     getString(lookup, prefix, "REDIS_HOST", "localhost"),
+			Port:     getInt(lookup, prefix, "REDIS_PORT", 6379),
+			Password: getString(lookup, prefix, "REDIS_PASSWORD", ""),
+			DB:       getInt(lookup, prefix, "REDIS_DB", 0),
 		},
 		Storage: StorageSettings{
 			Provider:        getString(lookup, prefix, "STORAGE_PROVIDER", "local"),

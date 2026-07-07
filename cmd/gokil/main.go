@@ -53,12 +53,22 @@ func startproject(args []string) error {
 	flags := flag.NewFlagSet("startproject", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	dir := flags.String("dir", "", "output directory")
+	withDB := flags.Bool("db", false, "setup database with Docker Compose")
+	noDB := flags.Bool("no-db", false, "skip database Docker Compose setup")
+	dbEngine := flags.String("db-engine", "postgres", "database engine: postgres or mysql")
+	withRedis := flags.Bool("redis", false, "setup Redis with Docker Compose")
+	noRedis := flags.Bool("no-redis", false, "skip Redis Docker Compose setup")
 
 	// Reorder args so flags come before positional name (Go flag pkg stops at first non-flag).
 	ordered := make([]string, 0, len(args))
 	var name string
 	for i := 0; i < len(args); i++ {
 		if args[i] == "--dir" && i+1 < len(args) {
+			ordered = append(ordered, args[i], args[i+1])
+			i++
+			continue
+		}
+		if args[i] == "--db-engine" && i+1 < len(args) {
 			ordered = append(ordered, args[i], args[i+1])
 			i++
 			continue
@@ -77,7 +87,13 @@ func startproject(args []string) error {
 		name = flags.Arg(0)
 	}
 	if name == "" {
-		return fmt.Errorf("usage: gokil startproject <name> [--dir path]")
+		return fmt.Errorf("usage: gokil startproject <name> [--dir path] [--db|--no-db] [--db-engine postgres|mysql] [--redis|--no-redis]")
+	}
+	if *withDB && *noDB {
+		return fmt.Errorf("use only one of --db or --no-db")
+	}
+	if *withRedis && *noRedis {
+		return fmt.Errorf("use only one of --redis or --no-redis")
 	}
 
 	outDir := *dir
@@ -85,11 +101,27 @@ func startproject(args []string) error {
 		outDir = name
 	}
 
+	var infraPreset *scaffold.InfraOptions
+	if *withDB || *noDB || *withRedis || *noRedis {
+		infraPreset = &scaffold.InfraOptions{
+			SetupDatabase: *withDB,
+			Database:      *dbEngine,
+			SetupRedis:    *withRedis,
+		}
+		if *noDB {
+			infraPreset.SetupDatabase = false
+		}
+		if *noRedis {
+			infraPreset.SetupRedis = false
+		}
+	}
+
 	return scaffold.Create(scaffold.Options{
 		Name:        name,
 		Dir:         outDir,
 		ModPath:     name,
 		ReplacePath: computeReplacePath(outDir),
+		Infra:       infraPreset,
 	})
 }
 
@@ -268,6 +300,9 @@ func usage() {
 
 Commands:
   startproject <name>   Create a new project
+                          --db / --no-db
+                          --db-engine postgres|mysql
+                          --redis / --no-redis
   makemigrations [name] Generate migration files from models
   migrate               Apply pending migrations
   migrate --rollback    Rollback last migration

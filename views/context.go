@@ -28,7 +28,7 @@ func Wrap(handler Handler) func(http.ResponseWriter, *http.Request, map[string]s
 			Params:  params,
 		}
 		if err := handler(ctx); err != nil {
-			_ = Error(ctx, http.StatusInternalServerError, err.Error())
+			_ = HandleError(ctx, err)
 		}
 	}
 }
@@ -54,6 +54,14 @@ func (c *Context) BindJSON(v any) error {
 		return err
 	}
 	return json.Unmarshal(body, v)
+}
+
+// MustBindJSON parses JSON and returns 400 Bad Request on invalid input.
+func (c *Context) MustBindJSON(v any) error {
+	if err := c.BindJSON(v); err != nil {
+		return BadRequest("invalid json")
+	}
+	return nil
 }
 
 func (c *Context) Param(name string) string {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
@@ -21,8 +22,11 @@ type Tx struct {
 type dbContextKey struct{}
 
 func Connect(driver, dsn string, maxOpen, maxIdle int) (*DB, error) {
-	if driver == "postgres" {
+	switch driver {
+	case "postgres":
 		driver = "pgx"
+	case "mysql":
+		driver = "mysql"
 	}
 	db, err := sql.Open(driver, dsn)
 	if err != nil {

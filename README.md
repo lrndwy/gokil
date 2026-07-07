@@ -32,6 +32,27 @@ cp .env.example .env
 # go mod tidy dijalankan otomatis oleh startproject
 ```
 
+Saat `startproject`, CLI akan menanyakan:
+- Setup database dengan Docker Compose? (PostgreSQL / MySQL)
+- Setup Redis untuk caching dengan Docker Compose?
+
+Jika memilih ya, project akan dibuat dengan `docker-compose.yml` dan `.env` yang sudah selaras.
+
+Non-interaktif:
+
+```bash
+gokil startproject myapi --db --db-engine postgres --redis
+gokil startproject myapi --db --db-engine mysql --no-redis
+```
+
+Jalankan infrastruktur:
+
+```bash
+docker compose up -d
+```
+
+> **Catatan:** `makemigrations` / `migrate` saat ini dioptimalkan untuk **PostgreSQL**. MySQL didukung untuk koneksi ORM, tetapi generator migrasi masih menggunakan dialek PostgreSQL.
+
 ### 2. Konfigurasi environment
 
 ```bash
@@ -83,6 +104,7 @@ myapi/
 ├── urls.go              # Definisi route
 ├── views/               # Handler REST API
 ├── migrations/          # File SQL migrasi
+├── docker-compose.yml   # Opsional (jika setup DB/Redis via CLI)
 └── storage/             # Upload lokal
 ```
 
@@ -95,7 +117,16 @@ myapi/
 | `GOKIL_DEBUG` | `true` | Mode debug |
 | `GOKIL_HOST` | `127.0.0.1` | Host server |
 | `GOKIL_PORT` | `8080` | Port server |
-| `GOKIL_DB_DSN` | — | PostgreSQL connection string |
+| `GOKIL_DB_DSN` | — | Connection string database |
+| `GOKIL_DB_HOST` | `localhost` | Host database |
+| `GOKIL_DB_PORT` | `5432` | Port database |
+| `GOKIL_DB_USER` | — | Username database |
+| `GOKIL_DB_PASSWORD` | — | Password database |
+| `GOKIL_DB_NAME` | — | Nama database |
+| `GOKIL_REDIS_ENABLED` | `false` | Aktifkan Redis |
+| `GOKIL_REDIS_URL` | — | URL Redis (`redis://host:6379/0`) |
+| `GOKIL_REDIS_HOST` | `localhost` | Host Redis |
+| `GOKIL_REDIS_PORT` | `6379` | Port Redis |
 | `GOKIL_DB_MIGRATIONS_DIR` | `migrations` | Folder migrasi |
 | `GOKIL_STORAGE_PROVIDER` | `local` | `local` atau `s3` |
 | `GOKIL_STORAGE_LOCAL_PATH` | `storage` | Path storage lokal |
@@ -115,6 +146,11 @@ _, err := orm.Objects[myapi.User](ctx).Filter("id", 1).Update(map[string]any{"na
 
 // Delete
 _, err := orm.Objects[myapi.User](ctx).Filter("id", 1).Delete()
+
+// Shortcuts
+user, err := orm.GetByID[myapi.User](ctx, 1)
+user, err := orm.UpdateByID[myapi.User](ctx, 1, map[string]any{"name": "Budi"})
+user, err := orm.DeleteByID[myapi.User](ctx, 1)
 
 // Relasi
 posts, err := orm.Objects[myapi.Post](ctx).SelectRelated("Author").All()
@@ -156,19 +192,58 @@ func URLPatterns(app *framework.App, r *router.Router) {
     r.GET("/api/users/", app.Wrap(views.UserList))
     r.POST("/api/users/", app.Wrap(views.UserCreate))
     r.GET("/api/users/:id", app.Wrap(views.UserDetail))
+    r.PUT("/api/users/:id", app.Wrap(views.UserUpdate))
+    r.DELETE("/api/users/:id", app.Wrap(views.UserDelete))
 }
 ```
 
 **views/user.go:**
 
 ```go
-func UserList(ctx *views.Context) error {
-    users, err := orm.Objects[myapi.User](ctx.DBContext()).All()
-    if err != nil {
+func UserDetail(ctx *views.Context) error {
+    user, err := orm.GetByID[models.User](ctx.DBContext(), ctx.Param("id"))
+    if err := views.NotFoundIf(err, "user not found"); err != nil {
         return err
     }
-    return ctx.JSON(http.StatusOK, users)
+    return ctx.OK("user retrieved", user)
 }
+
+func UserDelete(ctx *views.Context) error {
+    user, err := orm.DeleteByID[models.User](ctx.DBContext(), ctx.Param("id"))
+    if err := views.NotFoundIf(err, "user not found"); err != nil {
+        return err
+    }
+    return ctx.OK("user deleted", user)
+}
+```
+
+### View helpers
+
+| Helper | Deskripsi |
+|--------|-----------|
+| `ctx.MustBindJSON(&input)` | Parse JSON, otomatis 400 jika invalid |
+| `ctx.OK(message, data)` | Response sukses `{status, message, data}` |
+| `ctx.Created(message, data)` | Response 201 dengan envelope standar |
+| `views.NotFoundIf(err, "not found")` | Map `sql.ErrNoRows` ke 404 |
+| `views.NotFound/BadRequest/Conflict(msg)` | Return error HTTP dengan status tepat |
+| `orm.GetByID[T](ctx, id)` | Ambil satu record by ID |
+| `orm.UpdateByID[T](ctx, id, values)` | Update dan kembalikan data terbaru |
+| `orm.DeleteByID[T](ctx, id)` | Hapus dan kembalikan data yang dihapus |
+
+Response sukses standar:
+
+```json
+{
+  "status": 200,
+  "message": "user retrieved",
+  "data": { "id": 1, "email": "a@b.com", "name": "Ali" }
+}
+```
+
+Response error:
+
+```json
+{ "error": "user not found" }
 ```
 
 ## Storage

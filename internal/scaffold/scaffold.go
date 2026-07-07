@@ -16,6 +16,7 @@ type Options struct {
 	Dir         string
 	ModPath     string
 	ReplacePath string
+	Infra       *InfraOptions
 }
 
 func Create(opts Options) error {
@@ -46,6 +47,18 @@ func Create(opts Options) error {
 		return err
 	}
 
+	infraOpts := PromptInfraOptions(name, opts.Infra)
+	templateData := TemplateData{
+		Name:             name,
+		ModPath:          modPath,
+		ReplacePath:      replacePath,
+		FrameworkVersion: modRequire,
+		Infra:            BuildInfraConfig(name, infraOpts),
+	}
+	if err := validateInfra(templateData); err != nil {
+		return err
+	}
+
 	files := map[string]string{
 		"go.mod":              goModTemplate,
 		"settings.go":         settingsTemplate,
@@ -53,6 +66,7 @@ func Create(opts Options) error {
 		"urls.go":             urlsTemplate,
 		"views/post.go":       viewsPostTemplate,
 		"views/user.go":       viewsUserTemplate,
+		"views/tag.go":        viewsTagTemplate,
 		".env.example":        envExampleTemplate,
 		".gitignore":          gitignoreTemplate,
 		filepath.Join("cmd", name, "main.go"): mainTemplate,
@@ -63,12 +77,21 @@ func Create(opts Options) error {
 		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
 			return err
 		}
-		if err := renderTemplate(fullPath, tmpl, map[string]string{
-			"Name":             name,
-			"ModPath":          modPath,
-			"ReplacePath":      replacePath,
-			"FrameworkVersion": modRequire,
-		}); err != nil {
+		if err := renderTemplate(fullPath, tmpl, templateData); err != nil {
+			return err
+		}
+	}
+
+	if templateData.Infra.NeedsDockerCompose() {
+		compose, err := RenderDockerCompose(templateData)
+		if err != nil {
+			return err
+		}
+		composePath := filepath.Join(dir, "docker-compose.yml")
+		if err := os.WriteFile(composePath, []byte(compose), 0o644); err != nil {
+			return err
+		}
+		if err := renderTemplate(filepath.Join(dir, ".env"), envExampleTemplate, templateData); err != nil {
 			return err
 		}
 	}
@@ -87,6 +110,17 @@ func Create(opts Options) error {
 	}
 
 	fmt.Printf("Created project %s\n", dir)
+	if templateData.Infra.NeedsDockerCompose() {
+		fmt.Println("Docker Compose: docker-compose.yml")
+		fmt.Println("Environment: .env (generated from .env.example)")
+		fmt.Println("Next:")
+		fmt.Println("  cd", dir)
+		fmt.Println("  docker compose up -d")
+		fmt.Println("  go run ./cmd/"+name, "makemigrations initial")
+		fmt.Println("  go run ./cmd/"+name, "migrate")
+		fmt.Println("  go run ./cmd/"+name, "serve")
+		return nil
+	}
 	fmt.Println("Next: cd", dir, "&& cp .env.example .env")
 	return nil
 }
@@ -109,7 +143,7 @@ func tidyModule(dir, frameworkVersion string) error {
 	return nil
 }
 
-func renderTemplate(path, tmpl string, data map[string]string) error {
+func renderTemplate(path, tmpl string, data TemplateData) error {
 	t, err := template.New("scaffold").Parse(tmpl)
 	if err != nil {
 		return err
@@ -127,6 +161,8 @@ const goModTemplate = `module {{.ModPath}}
 go 1.22
 
 require github.com/lrndwy/gokil {{.FrameworkVersion}}
+
+replace github.com/lrndwy/gokil => {{.ReplacePath}}
 `
 
 const settingsTemplate = `package {{.Name}}
@@ -185,16 +221,24 @@ func URLPatterns(app *framework.App, r *router.Router) {
 	r.GET("/api/users/", app.Wrap(views.UserList))
 	r.POST("/api/users/", app.Wrap(views.UserCreate))
 	r.GET("/api/users/:id", app.Wrap(views.UserDetail))
+	r.PUT("/api/users/:id", app.Wrap(views.UserUpdate))
+	r.DELETE("/api/users/:id", app.Wrap(views.UserDelete))
 	r.GET("/api/posts/", app.Wrap(views.PostList))
 	r.POST("/api/posts/", app.Wrap(views.PostCreate))
 	r.GET("/api/posts/:id", app.Wrap(views.PostDetail))
+	r.PUT("/api/posts/:id", app.Wrap(views.PostUpdate))
+	r.DELETE("/api/posts/:id", app.Wrap(views.PostDelete))
+	r.GET("/api/tags/", app.Wrap(views.TagList))
+	r.POST("/api/tags/", app.Wrap(views.TagCreate))
+	r.GET("/api/tags/:id", app.Wrap(views.TagDetail))
+	r.PUT("/api/tags/:id", app.Wrap(views.TagUpdate))
+	r.DELETE("/api/tags/:id", app.Wrap(views.TagDelete))
 }
 `
 
 const viewsUserTemplate = `package views
 
 import (
-	"database/sql"
 	"net/http"
 
 	"{{.ModPath}}/models"
@@ -211,7 +255,7 @@ func UserList(ctx *views.Context) error {
 	if err != nil {
 		return err
 	}
-	return ctx.JSON(http.StatusOK, users)
+	return ctx.OK("users retrieved", users)
 }
 
 func UserCreate(ctx *views.Context) error {
@@ -219,8 +263,8 @@ func UserCreate(ctx *views.Context) error {
 		Email string ` + "`" + `json:"email"` + "`" + `
 		Name  string ` + "`" + `json:"name"` + "`" + `
 	}
-	if err := ctx.BindJSON(&input); err != nil {
-		return views.Error(ctx, http.StatusBadRequest, "invalid json")
+	if err := ctx.MustBindJSON(&input); err != nil {
+		return err
 	}
 	user, err := orm.Create(ctx.DBContext(), &models.User{
 		Email: input.Email,
@@ -229,33 +273,63 @@ func UserCreate(ctx *views.Context) error {
 	if err != nil {
 		return err
 	}
-	return ctx.JSON(http.StatusCreated, user)
+	return ctx.Created("user created", user)
 }
 
 func UserDetail(ctx *views.Context) error {
-	user, err := orm.Objects[models.User](ctx.DBContext()).
-		Filter("id", ctx.Param("id")).
-		Get()
-	if err == sql.ErrNoRows {
-		return views.Error(ctx, http.StatusNotFound, "user not found")
-	}
-	if err != nil {
+	user, err := orm.GetByID[models.User](ctx.DBContext(), ctx.Param("id"))
+	if err := views.NotFoundIf(err, "user not found"); err != nil {
 		return err
 	}
-	return ctx.JSON(http.StatusOK, user)
+	return ctx.OK("user retrieved", user)
+}
+
+func UserUpdate(ctx *views.Context) error {
+	var input struct {
+		Email string ` + "`" + `json:"email"` + "`" + `
+		Name  string ` + "`" + `json:"name"` + "`" + `
+	}
+	if err := ctx.MustBindJSON(&input); err != nil {
+		return err
+	}
+	user, err := orm.UpdateByID[models.User](ctx.DBContext(), ctx.Param("id"), map[string]any{
+		"email": input.Email,
+		"name":  input.Name,
+	})
+	if err := views.NotFoundIf(err, "user not found"); err != nil {
+		return err
+	}
+	return ctx.OK("user updated", user)
+}
+
+func UserDelete(ctx *views.Context) error {
+	user, err := orm.DeleteByID[models.User](ctx.DBContext(), ctx.Param("id"))
+	if err := views.NotFoundIf(err, "user not found"); err != nil {
+		return err
+	}
+	return ctx.OK("user deleted", user)
 }
 `
 
 const viewsPostTemplate = `package views
 
 import (
-	"database/sql"
-	"net/http"
-
 	"{{.ModPath}}/models"
 	"github.com/lrndwy/gokil/orm"
 	"github.com/lrndwy/gokil/views"
 )
+
+func getPost(ctx *views.Context, id string) (*models.Post, error) {
+	post, err := orm.Objects[models.Post](ctx.DBContext()).
+		SelectRelated("Author").
+		PrefetchRelated("Tags").
+		Filter("id", id).
+		Get()
+	if err := views.NotFoundIf(err, "post not found"); err != nil {
+		return nil, err
+	}
+	return post, nil
+}
 
 func PostList(ctx *views.Context) error {
 	posts, err := orm.Objects[models.Post](ctx.DBContext()).
@@ -264,7 +338,7 @@ func PostList(ctx *views.Context) error {
 	if err != nil {
 		return err
 	}
-	return ctx.JSON(http.StatusOK, posts)
+	return ctx.OK("posts retrieved", posts)
 }
 
 func PostCreate(ctx *views.Context) error {
@@ -273,8 +347,8 @@ func PostCreate(ctx *views.Context) error {
 		Content  string ` + "`" + `json:"content"` + "`" + `
 		AuthorID int64  ` + "`" + `json:"author_id"` + "`" + `
 	}
-	if err := ctx.BindJSON(&input); err != nil {
-		return views.Error(ctx, http.StatusBadRequest, "invalid json")
+	if err := ctx.MustBindJSON(&input); err != nil {
+		return err
 	}
 	post, err := orm.Create(ctx.DBContext(), &models.Post{
 		Title:    input.Title,
@@ -284,22 +358,110 @@ func PostCreate(ctx *views.Context) error {
 	if err != nil {
 		return err
 	}
-	return ctx.JSON(http.StatusCreated, post)
+	return ctx.Created("post created", post)
 }
 
 func PostDetail(ctx *views.Context) error {
-	post, err := orm.Objects[models.Post](ctx.DBContext()).
-		SelectRelated("Author").
-		PrefetchRelated("Tags").
-		Filter("id", ctx.Param("id")).
-		Get()
-	if err == sql.ErrNoRows {
-		return views.Error(ctx, http.StatusNotFound, "post not found")
-	}
+	post, err := getPost(ctx, ctx.Param("id"))
 	if err != nil {
 		return err
 	}
-	return ctx.JSON(http.StatusOK, post)
+	return ctx.OK("post retrieved", post)
+}
+
+func PostUpdate(ctx *views.Context) error {
+	var input struct {
+		Title    string ` + "`" + `json:"title"` + "`" + `
+		Content  string ` + "`" + `json:"content"` + "`" + `
+		AuthorID int64  ` + "`" + `json:"author_id"` + "`" + `
+	}
+	if err := ctx.MustBindJSON(&input); err != nil {
+		return err
+	}
+	_, err := orm.UpdateByID[models.Post](ctx.DBContext(), ctx.Param("id"), map[string]any{
+		"title":     input.Title,
+		"content":   input.Content,
+		"author_id": input.AuthorID,
+	})
+	if err := views.NotFoundIf(err, "post not found"); err != nil {
+		return err
+	}
+	post, err := getPost(ctx, ctx.Param("id"))
+	if err != nil {
+		return err
+	}
+	return ctx.OK("post updated", post)
+}
+
+func PostDelete(ctx *views.Context) error {
+	post, err := orm.DeleteByID[models.Post](ctx.DBContext(), ctx.Param("id"))
+	if err := views.NotFoundIf(err, "post not found"); err != nil {
+		return err
+	}
+	return ctx.OK("post deleted", post)
+}
+`
+
+const viewsTagTemplate = `package views
+
+import (
+	"{{.ModPath}}/models"
+	"github.com/lrndwy/gokil/orm"
+	"github.com/lrndwy/gokil/views"
+)
+
+func TagList(ctx *views.Context) error {
+	tags, err := orm.Objects[models.Tag](ctx.DBContext()).All()
+	if err != nil {
+		return err
+	}
+	return ctx.OK("tags retrieved", tags)
+}
+
+func TagCreate(ctx *views.Context) error {
+	var input struct {
+		Name string ` + "`" + `json:"name"` + "`" + `
+	}
+	if err := ctx.MustBindJSON(&input); err != nil {
+		return err
+	}
+	tag, err := orm.Create(ctx.DBContext(), &models.Tag{Name: input.Name})
+	if err != nil {
+		return err
+	}
+	return ctx.Created("tag created", tag)
+}
+
+func TagDetail(ctx *views.Context) error {
+	tag, err := orm.GetByID[models.Tag](ctx.DBContext(), ctx.Param("id"))
+	if err := views.NotFoundIf(err, "tag not found"); err != nil {
+		return err
+	}
+	return ctx.OK("tag retrieved", tag)
+}
+
+func TagUpdate(ctx *views.Context) error {
+	var input struct {
+		Name string ` + "`" + `json:"name"` + "`" + `
+	}
+	if err := ctx.MustBindJSON(&input); err != nil {
+		return err
+	}
+	tag, err := orm.UpdateByID[models.Tag](ctx.DBContext(), ctx.Param("id"), map[string]any{
+		"name": input.Name,
+	})
+	if err := views.NotFoundIf(err, "tag not found"); err != nil {
+		return err
+	}
+	return ctx.OK("tag updated", tag)
+}
+
+func TagDelete(ctx *views.Context) error {
+	tag, err := orm.DeleteByID[models.Tag](ctx.DBContext(), ctx.Param("id"))
+	if err := views.NotFoundIf(err, "tag not found"); err != nil {
+		return err
+	}
+	return ctx.OK("tag deleted", tag)
 }
 `
 
@@ -453,11 +615,27 @@ GOKIL_DEBUG=true
 GOKIL_HOST=127.0.0.1
 GOKIL_PORT=8080
 
-# Database (PostgreSQL)
-GOKIL_DB_DRIVER=postgres
-GOKIL_DB_DSN=postgres://user:password@localhost:5432/{{.Name}}?sslmode=disable
+# Database ({{if eq .Infra.DBDriver "mysql"}}MySQL{{else}}PostgreSQL{{end}})
+GOKIL_DB_DRIVER={{.Infra.DBDriver}}
+GOKIL_DB_HOST={{.Infra.DBHost}}
+GOKIL_DB_PORT={{.Infra.DBPort}}
+GOKIL_DB_USER={{.Infra.DBUser}}
+GOKIL_DB_PASSWORD={{.Infra.DBPassword}}
+GOKIL_DB_NAME={{.Infra.DBName}}
+GOKIL_DB_DSN={{.Infra.DBDSN}}
 GOKIL_DB_MIGRATIONS_DIR=migrations
 
+{{if .Infra.SetupRedis}}# Redis
+GOKIL_REDIS_ENABLED=true
+GOKIL_REDIS_HOST={{.Infra.RedisHost}}
+GOKIL_REDIS_PORT={{.Infra.RedisPort}}
+GOKIL_REDIS_URL={{.Infra.RedisURL}}
+{{else}}# Redis (optional)
+# GOKIL_REDIS_ENABLED=true
+# GOKIL_REDIS_HOST=localhost
+# GOKIL_REDIS_PORT=6379
+# GOKIL_REDIS_URL=redis://localhost:6379/0
+{{end}}
 # Storage (local or s3)
 GOKIL_STORAGE_PROVIDER=local
 GOKIL_STORAGE_LOCAL_PATH=storage

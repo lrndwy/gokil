@@ -1,7 +1,6 @@
 package views
 
 import (
-	"database/sql"
 	"net/http"
 
 	"demoapi/models"
@@ -18,7 +17,7 @@ func UserList(ctx *views.Context) error {
 	if err != nil {
 		return err
 	}
-	return ctx.JSON(http.StatusOK, users)
+	return ctx.OK("users retrieved", users)
 }
 
 func UserCreate(ctx *views.Context) error {
@@ -26,8 +25,8 @@ func UserCreate(ctx *views.Context) error {
 		Email string `json:"email"`
 		Name  string `json:"name"`
 	}
-	if err := ctx.BindJSON(&input); err != nil {
-		return views.Error(ctx, http.StatusBadRequest, "invalid json")
+	if err := ctx.MustBindJSON(&input); err != nil {
+		return err
 	}
 	user, err := orm.Create(ctx.DBContext(), &models.User{
 		Email: input.Email,
@@ -36,18 +35,39 @@ func UserCreate(ctx *views.Context) error {
 	if err != nil {
 		return err
 	}
-	return ctx.JSON(http.StatusCreated, user)
+	return ctx.Created("user created", user)
 }
 
 func UserDetail(ctx *views.Context) error {
-	user, err := orm.Objects[models.User](ctx.DBContext()).
-		Filter("id", ctx.Param("id")).
-		Get()
-	if err == sql.ErrNoRows {
-		return views.Error(ctx, http.StatusNotFound, "user not found")
-	}
-	if err != nil {
+	user, err := orm.GetByID[models.User](ctx.DBContext(), ctx.Param("id"))
+	if err := views.NotFoundIf(err, "user not found"); err != nil {
 		return err
 	}
-	return ctx.JSON(http.StatusOK, user)
+	return ctx.OK("user retrieved", user)
+}
+
+func UserUpdate(ctx *views.Context) error {
+	var input struct {
+		Email string `json:"email"`
+		Name  string `json:"name"`
+	}
+	if err := ctx.MustBindJSON(&input); err != nil {
+		return err
+	}
+	user, err := orm.UpdateByID[models.User](ctx.DBContext(), ctx.Param("id"), map[string]any{
+		"email": input.Email,
+		"name":  input.Name,
+	})
+	if err := views.NotFoundIf(err, "user not found"); err != nil {
+		return err
+	}
+	return ctx.OK("user updated", user)
+}
+
+func UserDelete(ctx *views.Context) error {
+	user, err := orm.DeleteByID[models.User](ctx.DBContext(), ctx.Param("id"))
+	if err := views.NotFoundIf(err, "user not found"); err != nil {
+		return err
+	}
+	return ctx.OK("user deleted", user)
 }

@@ -99,7 +99,7 @@ func (a *App) Wrap(handler views.Handler) router.HandlerFunc {
 		ctx.Request = r.WithContext(reqCtx)
 
 		if err := handler(ctx); err != nil {
-			_ = views.Error(ctx, http.StatusInternalServerError, err.Error())
+			_ = views.HandleError(ctx, err)
 		}
 	}
 }
