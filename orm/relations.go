@@ -75,7 +75,14 @@ func (qs *QuerySet[T]) prefetchHasMany(results []*T, relField *FieldMeta) error 
 		return nil
 	}
 
-	fkCol := toColumnName(qs.meta.Name) + "_id"
+	fkCol := relField.Relation.FKColumn
+	if fkCol == "" {
+		fkCol = resolveHasManyFKColumn(qs.meta, relField, relatedMeta)
+	} else if fm, ok := relatedMeta.FieldByName[fkCol]; ok {
+		fkCol = fm.Column
+	} else {
+		fkCol = toColumnName(normalizeFKFieldName(fkCol))
+	}
 	conn := connFromContext(qs.ctx)
 	if conn == nil {
 		return fmt.Errorf("no database in context")

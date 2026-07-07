@@ -29,6 +29,12 @@ func RegisterModels(models ...any) error {
 		key := meta.Name
 		globalRegistry.models[key] = meta
 	}
+
+	for _, meta := range globalRegistry.models {
+		if err := finalizeModelRelations(meta); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

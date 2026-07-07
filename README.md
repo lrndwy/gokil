@@ -69,15 +69,36 @@ package models
 import "github.com/lrndwy/gokil/orm"
 
 func init() {
-    _ = orm.RegisterModels(&User{})
+    _ = orm.RegisterModels(
+        &User{},
+        &Post{},
+        &Tag{},
+    )
 }
 
 type User struct {
     orm.BaseModel
-    Email string `orm:"unique;not null;size:255"`
+    Email string `orm:"unique,required,size:255"`
     Name  string `orm:"size:100"`
+    Posts []Post              // has_many (auto)
+}
+
+type Post struct {
+    orm.BaseModel
+    Title    string `orm:"required,size:200"`
+    Content  string `orm:"text"`
+    AuthorID int64  `orm:"required"`
+    Author   *User              // belongs_to (auto)
+    Tags     []Tag  `orm:"many_many:post_tags"`
+}
+
+type Tag struct {
+    orm.BaseModel
+    Name string `orm:"unique,required,size:50"`
 }
 ```
+
+Relasi `Author` / `Posts` terdeteksi otomatis dari tipe field + field FK (`AuthorID`).
 
 ### 4. Generate dan jalankan migrasi
 
@@ -165,17 +186,62 @@ err := orm.WithTx(ctx, func(ctx context.Context, tx *orm.Tx) error {
 
 ### Struct Tag `orm:`
 
+Tag bisa dipisah dengan koma atau titik koma: `unique,required,size:255`
+
+#### Field scalar
+
 | Tag | Deskripsi |
 |-----|-----------|
 | `pk` | Primary key |
 | `unique` | Unique constraint |
-| `not null` | NOT NULL |
+| `required` / `not null` | NOT NULL |
+| `null` | Nullable |
 | `size:N` | VARCHAR(N) |
-| `type:text` | TEXT column |
-| `fk:Column` | Foreign key column |
-| `rel:belongs_to` | Relasi belongs-to |
-| `reverse:field` | Reverse relation (has many) |
-| `m2m:table_name` | Many-to-many through table |
+| `text` / `type:text` | Kolom TEXT |
+| `index` | Index |
+| `default:value` | Default value |
+
+#### Relasi (cara baru — disarankan)
+
+| Pola field | Tag (opsional) | Hasil |
+|------------|----------------|-------|
+| `Author *User` + `AuthorID int64` | _(kosong)_ | `belongs_to` otomatis |
+| `Author *User` + `AuthorID int64` | `belongs_to:AuthorID` | `belongs_to` eksplisit |
+| `Posts []Post` | _(kosong)_ | `has_many` otomatis (cari FK di model Post) |
+| `Posts []Post` | `has_many:AuthorID` | `has_many` eksplisit |
+| `Tags []Tag` | `many_many:post_tags` | Many-to-many via tabel `post_tags` |
+| `Tags []Tag` | `many_many` | Many-to-many, nama tabel auto |
+
+Contoh minimal:
+
+```go
+type Post struct {
+    orm.BaseModel
+    AuthorID int64  `orm:"required"`
+    Author   *User  // auto belongs_to
+    Tags     []Tag  `orm:"many_many:post_tags"`
+}
+
+type User struct {
+    orm.BaseModel
+    Posts []Post // auto has_many via Post.AuthorID
+}
+```
+
+#### Relasi (legacy — masih didukung)
+
+| Tag | Deskripsi |
+|-----|-----------|
+| `fk:AuthorID` + `rel:belongs_to` | Belongs-to |
+| `reverse:author` | Has-many (legacy) |
+| `m2m:post_tags` | Many-to-many (legacy) |
+
+#### Aturan auto-infer
+
+1. `Author *User` → cari field `AuthorID` di struct yang sama
+2. `Posts []Post` → cari FK di model `Post` yang menunjuk ke parent (mis. `AuthorID`)
+3. Jika FK tidak ditemukan pada slice field → diperlakukan sebagai `many_many`
+4. Register semua model terkait dalam satu `RegisterModels(...)` agar inferensi antar-model berjalan
 
 ### Filter Lookups
 

@@ -161,7 +161,7 @@ func parseFieldMeta(sf reflect.StructField) (*FieldMeta, error) {
 			fm.PrimaryKey = true
 		case opt == "unique":
 			fm.Unique = true
-		case opt == "not null":
+		case opt == "not null", opt == "required":
 			fm.Nullable = false
 		case opt == "null":
 			fm.Nullable = true
@@ -173,6 +173,30 @@ func parseFieldMeta(sf reflect.StructField) (*FieldMeta, error) {
 			fm.AutoNowAdd = true
 		case opt == "index":
 			fm.Index = true
+		case opt == "text":
+			fm.FieldType = FieldTypeText
+		case opt == "belongs_to":
+			fm.IsRelation = true
+			fm.Relation.Type = RelationBelongsTo
+			fm.Relation.FKColumn = sf.Name + "ID"
+		case strings.HasPrefix(opt, "belongs_to:"):
+			fm.IsRelation = true
+			fm.Relation.Type = RelationBelongsTo
+			fm.Relation.FKColumn = strings.TrimPrefix(opt, "belongs_to:")
+		case opt == "has_many":
+			fm.IsRelation = true
+			fm.Relation.Type = RelationHasMany
+		case strings.HasPrefix(opt, "has_many:"):
+			fm.IsRelation = true
+			fm.Relation.Type = RelationHasMany
+			fm.Relation.FKColumn = strings.TrimPrefix(opt, "has_many:")
+		case opt == "many_many":
+			fm.IsRelation = true
+			fm.Relation.Type = RelationManyToMany
+		case strings.HasPrefix(opt, "many_many:"):
+			fm.IsRelation = true
+			fm.Relation.Type = RelationManyToMany
+			fm.Relation.ThroughTable = strings.TrimPrefix(opt, "many_many:")
 		case strings.HasPrefix(opt, "column:"):
 			fm.Column = strings.TrimPrefix(opt, "column:")
 		case strings.HasPrefix(opt, "size:"):
@@ -213,10 +237,24 @@ func parseFieldMeta(sf reflect.StructField) (*FieldMeta, error) {
 		return fm, nil
 	}
 
-	// Skip slice and pointer relation fields without explicit scalar mapping
-	if sf.Type.Kind() == reflect.Slice || (sf.Type.Kind() == reflect.Ptr && sf.Type.Elem().Kind() == reflect.Struct && sf.Type != reflect.TypeOf((*BaseModel)(nil))) {
-		if !fm.IsRelation {
-			return nil, nil
+	if sf.Type.Kind() == reflect.Ptr && sf.Type.Elem().Kind() == reflect.Struct && sf.Type != reflect.TypeOf(BaseModel{}) {
+		fm.IsRelation = true
+		fm.Relation.Type = RelationBelongsTo
+		fm.Relation.FKColumn = sf.Name + "ID"
+		fm.Relation.RelatedModel = sf.Type.Elem().Name()
+		return fm, nil
+	}
+
+	if sf.Type.Kind() == reflect.Slice {
+		elem := sf.Type.Elem()
+		if elem.Kind() == reflect.Ptr {
+			elem = elem.Elem()
+		}
+		if elem.Kind() == reflect.Struct && elem.Name() != "" {
+			fm.IsRelation = true
+			fm.Relation.Type = RelationHasMany
+			fm.Relation.RelatedModel = elem.Name()
+			return fm, nil
 		}
 	}
 
@@ -227,6 +265,7 @@ func parseTag(tag string) []string {
 	if strings.TrimSpace(tag) == "" {
 		return nil
 	}
+	tag = strings.ReplaceAll(tag, ",", ";")
 	parts := strings.Split(tag, ";")
 	result := make([]string, 0, len(parts))
 	for _, p := range parts {

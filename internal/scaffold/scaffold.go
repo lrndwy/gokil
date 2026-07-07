@@ -186,23 +186,23 @@ func init() {
 
 type User struct {
 	orm.BaseModel
-	Email string ` + "`" + `orm:"unique;not null;size:255"` + "`" + `
+	Email string ` + "`" + `orm:"unique,required,size:255"` + "`" + `
 	Name  string ` + "`" + `orm:"size:100"` + "`" + `
-	Posts []Post ` + "`" + `orm:"reverse:author"` + "`" + `
+	Posts []Post
 }
 
 type Post struct {
 	orm.BaseModel
-	Title    string ` + "`" + `orm:"not null;size:200"` + "`" + `
-	Content  string ` + "`" + `orm:"type:text"` + "`" + `
-	AuthorID int64  ` + "`" + `orm:"not null"` + "`" + `
-	Author   *User  ` + "`" + `orm:"fk:AuthorID;rel:belongs_to"` + "`" + `
-	Tags     []Tag  ` + "`" + `orm:"m2m:post_tags"` + "`" + `
+	Title    string ` + "`" + `orm:"required,size:200"` + "`" + `
+	Content  string ` + "`" + `orm:"text"` + "`" + `
+	AuthorID int64  ` + "`" + `orm:"required"` + "`" + `
+	Author   *User
+	Tags     []Tag ` + "`" + `orm:"many_many:post_tags"` + "`" + `
 }
 
 type Tag struct {
 	orm.BaseModel
-	Name string ` + "`" + `orm:"unique;not null;size:50"` + "`" + `
+	Name string ` + "`" + `orm:"unique,required,size:50"` + "`" + `
 }
 `
 
