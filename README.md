@@ -28,6 +28,8 @@ Setelah terinstall, CLI `gokil` tersedia di `$GOPATH/bin` (pastikan ada di `PATH
 ```bash
 gokil startproject myapi
 cd myapi
+cp .env.example .env
+# go mod tidy dijalankan otomatis oleh startproject
 ```
 
 ### 2. Konfigurasi environment

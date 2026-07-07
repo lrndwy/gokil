@@ -1,34 +1,26 @@
 package main
 
-import (
-	"fmt"
-	"runtime/debug"
-)
+import "github.com/lrndwy/gokil/version"
 
-// Set at build time via -ldflags (optional).
+// Override at build time via -ldflags (optional).
 var (
-	Version = "dev"
+	Version = ""
 	Commit  = ""
 	Date    = ""
 )
 
 func printVersion() {
-	version := resolveVersion()
-	fmt.Printf("gokil %s", version)
+	info := version.Get()
+
+	if Version != "" {
+		info.Version = Version
+	}
 	if Commit != "" {
-		fmt.Printf(" (%s)", Commit)
+		info.Commit = Commit
 	}
 	if Date != "" {
-		fmt.Printf(" built %s", Date)
+		info.Date = Date
 	}
-	fmt.Println()
-}
 
-func resolveVersion() string {
-	if info, ok := debug.ReadBuildInfo(); ok {
-		if v := info.Main.Version; v != "" && v != "(devel)" {
-			return v
-		}
-	}
-	return Version
+	println(info.String())
 }

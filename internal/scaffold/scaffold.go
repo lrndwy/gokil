@@ -3,9 +3,12 @@ package scaffold
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"text/template"
+
+	"github.com/lrndwy/gokil/version"
 )
 
 type Options struct {
@@ -33,6 +36,11 @@ func Create(opts Options) error {
 	if replacePath == "" {
 		replacePath = ".."
 	}
+	frameworkVersion := version.RequireVersion()
+	modRequire := frameworkVersion
+	if modRequire == "latest" {
+		modRequire = "v0.0.0"
+	}
 
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -56,9 +64,10 @@ func Create(opts Options) error {
 			return err
 		}
 		if err := renderTemplate(fullPath, tmpl, map[string]string{
-			"Name":        name,
-			"ModPath":     modPath,
-			"ReplacePath": replacePath,
+			"Name":             name,
+			"ModPath":          modPath,
+			"ReplacePath":      replacePath,
+			"FrameworkVersion": modRequire,
 		}); err != nil {
 			return err
 		}
@@ -69,7 +78,35 @@ func Create(opts Options) error {
 		return err
 	}
 	storageDir := filepath.Join(dir, "storage")
-	return os.MkdirAll(storageDir, 0o755)
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		return err
+	}
+
+	if err := tidyModule(dir, frameworkVersion); err != nil {
+		return fmt.Errorf("go mod tidy: %w", err)
+	}
+
+	fmt.Printf("Created project %s\n", dir)
+	fmt.Println("Next: cd", dir, "&& cp .env.example .env")
+	return nil
+}
+
+func tidyModule(dir, frameworkVersion string) error {
+	if frameworkVersion == "latest" {
+		get := exec.Command("go", "get", version.ModulePath+"@latest")
+		get.Dir = dir
+		if out, err := get.CombinedOutput(); err != nil {
+			return fmt.Errorf("go get latest: %w: %s", err, string(out))
+		}
+	}
+
+	cmd := exec.Command("go", "mod", "tidy")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%w: %s", err, string(out))
+	}
+	return nil
 }
 
 func renderTemplate(path, tmpl string, data map[string]string) error {
@@ -89,7 +126,7 @@ const goModTemplate = `module {{.ModPath}}
 
 go 1.22
 
-require github.com/lrndwy/gokil v0.1.0
+require github.com/lrndwy/gokil {{.FrameworkVersion}}
 `
 
 const settingsTemplate = `package {{.Name}}
