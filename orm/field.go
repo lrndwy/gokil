@@ -294,11 +294,23 @@ func toSnakeCase(s string) string {
 	var b strings.Builder
 	for i, r := range s {
 		if i > 0 && r >= 'A' && r <= 'Z' {
-			b.WriteByte('_')
+			prev := rune(s[i-1])
+			nextLower := i+1 < len(s) && s[i+1] >= 'a' && s[i+1] <= 'z'
+			if (prev >= 'a' && prev <= 'z') || nextLower {
+				b.WriteByte('_')
+			}
+		}
+		if r >= 'A' && r <= 'Z' {
+			b.WriteRune(r + ('a' - 'A'))
+			continue
 		}
 		b.WriteRune(r)
 	}
-	return strings.ToLower(b.String())
+	return b.String()
+}
+
+func ToColumnName(name string) string {
+	return toColumnName(name)
 }
 
 func SQLType(f FieldMeta) string {

@@ -19,11 +19,46 @@ func TestRenderCreateTable(t *testing.T) {
 	meta, _ := orm.GetModel("Note")
 
 	sql := migration.RenderCreateTable(*meta)
-	if !strings.Contains(sql, "CREATE TABLE note") {
+	if !strings.Contains(sql, `CREATE TABLE "note"`) {
 		t.Fatalf("unexpected sql: %s", sql)
 	}
-	if !strings.Contains(sql, "body TEXT NOT NULL") {
+	if !strings.Contains(sql, `"body" TEXT NOT NULL`) {
 		t.Fatalf("missing body column: %s", sql)
+	}
+}
+
+func TestRenderUserTableQuoted(t *testing.T) {
+	orm.ResetRegistry()
+
+	type User struct {
+		orm.BaseModel
+		Email string `orm:"unique;not null;size:255"`
+	}
+	type Post struct {
+		orm.BaseModel
+		Title    string `orm:"not null;size:200"`
+		AuthorID int64  `orm:"not null"`
+		Author   *User  `orm:"fk:AuthorID;rel:belongs_to"`
+	}
+	_ = orm.RegisterModels(&User{}, &Post{})
+
+	userMeta, _ := orm.GetModel("User")
+	postMeta, _ := orm.GetModel("Post")
+
+	userSQL := migration.RenderCreateTable(*userMeta)
+	if !strings.Contains(userSQL, `CREATE TABLE "user"`) {
+		t.Fatalf("user table should be quoted: %s", userSQL)
+	}
+
+	postSQL := migration.RenderCreateTable(*postMeta)
+	if !strings.Contains(postSQL, `"author_id"`) {
+		t.Fatalf("expected author_id column: %s", postSQL)
+	}
+	if strings.Contains(postSQL, "author_i_d") {
+		t.Fatalf("unexpected broken column name: %s", postSQL)
+	}
+	if !strings.Contains(postSQL, `FOREIGN KEY ("author_id") REFERENCES "user"("id")`) {
+		t.Fatalf("unexpected fk sql: %s", postSQL)
 	}
 }
 

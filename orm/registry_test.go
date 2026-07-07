@@ -50,4 +50,7 @@ func TestToTableName(t *testing.T) {
 	if orm.ToTableName("BlogPost") != "blog_post" {
 		t.Fatal("snake case conversion failed")
 	}
+	if orm.ToColumnName("AuthorID") != "author_id" {
+		t.Fatalf("expected author_id, got %s", orm.ToColumnName("AuthorID"))
+	}
 }
