@@ -2,6 +2,7 @@ package orm
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 )
 
@@ -29,6 +30,7 @@ func finalizeModelRelations(meta *ModelMeta) error {
 		meta.Relations = append(meta.Relations, *fm)
 	}
 
+	injectSyntheticFKFields(meta)
 	return nil
 }
 
@@ -37,7 +39,9 @@ func finalizeBelongsTo(meta *ModelMeta, fm *FieldMeta) error {
 		fm.Relation.FKColumn = fm.Name + "ID"
 	}
 	if _, ok := meta.FieldByName[fm.Relation.FKColumn]; !ok {
-		return fmt.Errorf("belongs_to requires field %q", fm.Relation.FKColumn)
+		if !isBelongsToType(fm.GoType) {
+			return fmt.Errorf("belongs_to requires field %q", fm.Relation.FKColumn)
+		}
 	}
 	if fm.Relation.RelatedModel == "" {
 		fm.Relation.RelatedModel = relatedModelName(fm.GoType)
@@ -185,4 +189,30 @@ func defaultThroughTable(a, b string) string {
 		left, right = right, left
 	}
 	return left + "_" + right
+}
+
+func injectSyntheticFKFields(meta *ModelMeta) {
+	for i := range meta.Fields {
+		fm := &meta.Fields[i]
+		if !fm.IsRelation || fm.Relation.Type != RelationBelongsTo || !isBelongsToType(fm.GoType) {
+			continue
+		}
+		fkName := fm.Relation.FKColumn
+		if _, ok := meta.FieldByName[fkName]; ok {
+			continue
+		}
+		synthetic := FieldMeta{
+			Name:          fkName,
+			Column:        toColumnName(fkName),
+			GoType:        reflect.TypeOf(int64(0)),
+			FieldType:     FieldTypeBigInt,
+			Nullable:      fm.Nullable,
+			VirtualFK:     true,
+			RelationOwner: fm.Name,
+		}
+		meta.Fields = append(meta.Fields, synthetic)
+		idx := len(meta.Fields) - 1
+		meta.FieldByName[fkName] = &meta.Fields[idx]
+		meta.FieldByColumn[synthetic.Column] = &meta.Fields[idx]
+	}
 }

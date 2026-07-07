@@ -203,13 +203,21 @@ func collectFKIDs[T any](results []*T, _ string, relFieldName string) []int64 {
 	seen := map[int64]struct{}{}
 	for _, r := range results {
 		v := reflect.ValueOf(r).Elem()
-		idField := v.FieldByName(relFieldName + "ID")
-		if !idField.IsValid() {
-			continue
+		var id int64
+		bt := v.FieldByName(relFieldName)
+		if bt.IsValid() && isBelongsToType(bt.Type()) {
+			idField := bt.FieldByName("ID")
+			if idField.IsValid() {
+				id = idField.Int()
+			}
+		} else {
+			idField := v.FieldByName(relFieldName + "ID")
+			if idField.IsValid() && idField.Kind() == reflect.Int64 {
+				id = idField.Int()
+			}
 		}
-		if idField.Kind() == reflect.Int64 {
-			id := idField.Int()
-			if _, ok := seen[id]; !ok && id > 0 {
+		if id > 0 {
+			if _, ok := seen[id]; !ok {
 				seen[id] = struct{}{}
 				ids = append(ids, id)
 			}
@@ -291,16 +299,39 @@ func loadRelatedByIDs(ctx context.Context, meta *ModelMeta, ids []int64) (map[in
 func assignBelongsTo[T any](results []*T, relField *FieldMeta, related map[int64]any) {
 	for _, r := range results {
 		v := reflect.ValueOf(r).Elem()
-		fkName := relField.Name + "ID"
-		fk := v.FieldByName(fkName)
-		if !fk.IsValid() {
+		field := v.FieldByName(relField.Name)
+		if !field.IsValid() {
 			continue
 		}
-		if item, ok := related[fk.Int()]; ok {
-			field := v.FieldByName(relField.Name)
-			if field.IsValid() && field.CanSet() {
-				field.Set(reflect.ValueOf(item))
+
+		var fkID int64
+		if isBelongsToType(field.Type()) {
+			idField := field.FieldByName("ID")
+			if !idField.IsValid() {
+				continue
 			}
+			fkID = idField.Int()
+		} else {
+			fk := v.FieldByName(relField.Name + "ID")
+			if !fk.IsValid() {
+				continue
+			}
+			fkID = fk.Int()
+		}
+
+		item, ok := related[fkID]
+		if !ok {
+			continue
+		}
+		if isBelongsToType(field.Type()) {
+			ref := field.FieldByName("Ref")
+			if ref.IsValid() && ref.CanSet() {
+				ref.Set(reflect.ValueOf(item))
+			}
+			continue
+		}
+		if field.CanSet() {
+			field.Set(reflect.ValueOf(item))
 		}
 	}
 }
@@ -317,6 +348,22 @@ func assignHasMany[T any](results []*T, relField *FieldMeta, grouped map[int64][
 		if !field.IsValid() || !field.CanSet() {
 			continue
 		}
+
+		if isHasManyType(field.Type()) || isManyManyType(field.Type()) {
+			itemsField := field.FieldByName("Items")
+			if !itemsField.IsValid() || !itemsField.CanSet() {
+				continue
+			}
+			slice := reflect.MakeSlice(itemsField.Type(), len(items), len(items))
+			for i, item := range items {
+				ptr := reflect.New(reflect.ValueOf(item).Elem().Type())
+				ptr.Elem().Set(reflect.ValueOf(item).Elem())
+				slice.Index(i).Set(ptr)
+			}
+			itemsField.Set(slice)
+			continue
+		}
+
 		slice := reflect.MakeSlice(field.Type(), len(items), len(items))
 		for i, item := range items {
 			slice.Index(i).Set(reflect.ValueOf(item).Elem())
@@ -333,7 +380,13 @@ func scanRelatedRow(rows *sql.Rows, meta *ModelMeta, fkCol string) (any, int64, 
 	v := reflect.ValueOf(instance).Elem()
 	var parentID int64
 	if fm, ok := meta.FieldByColumn[fkCol]; ok {
-		if f := v.FieldByName(fm.Name); f.IsValid() {
+		if fm.VirtualFK {
+			if rel := v.FieldByName(fm.RelationOwner); rel.IsValid() {
+				if id := rel.FieldByName("ID"); id.IsValid() {
+					parentID = id.Int()
+				}
+			}
+		} else if f := v.FieldByName(fm.Name); f.IsValid() {
 			parentID = f.Int()
 		}
 	}
@@ -394,14 +447,8 @@ func scanInto(rows *sql.Rows, meta *ModelMeta, instance any) error {
 		if !ok {
 			continue
 		}
-		fieldPtr := v.FieldByName(f.Name)
-		if !fieldPtr.IsValid() {
-			if bm := v.FieldByName("BaseModel"); bm.IsValid() {
-				fieldPtr = bm.FieldByName(f.Name)
-			}
-		}
-		if fieldPtr.IsValid() {
-			dest[idx] = fieldPtr.Addr().Interface()
+		if dest[idx], ok = bindFieldDest(v, f); !ok {
+			continue
 		}
 	}
 	return rows.Scan(dest...)

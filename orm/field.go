@@ -46,6 +46,8 @@ type FieldMeta struct {
 	Default       string
 	Index         bool
 	IsRelation    bool
+	VirtualFK     bool
+	RelationOwner string
 	Relation      RelationMeta
 	StructField   reflect.StructField
 }
@@ -143,6 +145,11 @@ func parseFieldMeta(sf reflect.StructField) (*FieldMeta, error) {
 	tag := sf.Tag.Get("orm")
 	if tag == "-" {
 		return nil, nil
+	}
+
+	if fm, ok := parseTypedRelation(sf); ok {
+		applyFieldTagOptions(tag, fm)
+		return fm, nil
 	}
 
 	opts := parseTag(tag)
@@ -259,6 +266,23 @@ func parseFieldMeta(sf reflect.StructField) (*FieldMeta, error) {
 	}
 
 	return fm, nil
+}
+
+func applyFieldTagOptions(tag string, fm *FieldMeta) {
+	for _, opt := range parseTag(tag) {
+		switch {
+		case opt == "not null", opt == "required":
+			fm.Nullable = false
+		case opt == "null":
+			fm.Nullable = true
+		case strings.HasPrefix(opt, "fk:"):
+			fm.Relation.FKColumn = strings.TrimPrefix(opt, "fk:")
+		case strings.HasPrefix(opt, "through:"):
+			fm.Relation.ThroughTable = strings.TrimPrefix(opt, "through:")
+		case strings.HasPrefix(opt, "column:"):
+			fm.Column = strings.TrimPrefix(opt, "column:")
+		}
+	}
 }
 
 func parseTag(tag string) []string {

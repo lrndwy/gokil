@@ -80,17 +80,18 @@ type User struct {
     orm.BaseModel
     Email string `orm:"unique,required,size:255"`
     Name  string `orm:"size:100"`
-    Posts []Post              // has_many (auto)
+    Posts orm.HasMany[Post]
 }
 
 type Post struct {
     orm.BaseModel
-    Title    string `orm:"required,size:200"`
-    Content  string `orm:"text"`
-    AuthorID int64  `orm:"required"`
-    Author   *User              // belongs_to (auto)
-    Tags     []Tag  `orm:"many_many:post_tags"`
+    Title   string `orm:"required,size:200"`
+    Content string `orm:"text"`
+    Author  orm.BelongsTo[User] `orm:"required"`
+    Tags    orm.ManyMany[Tag, TablePostTags]
 }
+
+type TablePostTags string
 
 type Tag struct {
     orm.BaseModel
@@ -98,7 +99,7 @@ type Tag struct {
 }
 ```
 
-Relasi `Author` / `Posts` terdeteksi otomatis dari tipe field + field FK (`AuthorID`).
+Relasi didefinisikan dengan tipe generic `HasMany`, `BelongsTo`, dan `ManyMany`. FK untuk `BelongsTo` otomatis disimpan di field `.ID` (mis. `Author.ID` → kolom `author_id`).
 
 ### 4. Generate dan jalankan migrasi
 
@@ -203,28 +204,47 @@ Tag bisa dipisah dengan koma atau titik koma: `unique,required,size:255`
 
 #### Relasi (cara baru — disarankan)
 
+| Pola field | Deskripsi |
+|------------|-----------|
+| `Author orm.BelongsTo[User]` | Many-to-one; FK di `Author.ID` → `author_id` |
+| `Posts orm.HasMany[Post]` | One-to-many; FK dicari di model child |
+| `Tags orm.ManyMany[Tag, TablePostTags]` | Many-to-many; tabel join dari nama tipe (`TablePostTags` → `post_tags`) |
+
+Contoh minimal:
+
+```go
+type TablePostTags string
+
+type Post struct {
+    orm.BaseModel
+    Author orm.BelongsTo[User] `orm:"required"`
+    Tags   orm.ManyMany[Tag, TablePostTags]
+}
+
+type User struct {
+    orm.BaseModel
+    Posts orm.HasMany[Post]
+}
+```
+
+Setelah `SelectRelated("Author")`, akses relasi via `post.Author.Ref`. Setelah `PrefetchRelated("Tags")`, akses via `post.Tags.Items`.
+
+Tag opsional pada relasi: `required`, `fk:CustomID`, `through:custom_table`.
+
+#### Relasi (cara lama — masih didukung)
+
 | Pola field | Tag (opsional) | Hasil |
 |------------|----------------|-------|
 | `Author *User` + `AuthorID int64` | _(kosong)_ | `belongs_to` otomatis |
-| `Author *User` + `AuthorID int64` | `belongs_to:AuthorID` | `belongs_to` eksplisit |
-| `Posts []Post` | _(kosong)_ | `has_many` otomatis (cari FK di model Post) |
-| `Posts []Post` | `has_many:AuthorID` | `has_many` eksplisit |
-| `Tags []Tag` | `many_many:post_tags` | Many-to-many via tabel `post_tags` |
-| `Tags []Tag` | `many_many` | Many-to-many, nama tabel auto |
-
-Contoh minimal:
+| `Posts []Post` | _(kosong)_ | `has_many` otomatis |
+| `Tags []Tag` | `many_many:post_tags` | Many-to-many |
 
 ```go
 type Post struct {
     orm.BaseModel
     AuthorID int64  `orm:"required"`
-    Author   *User  // auto belongs_to
-    Tags     []Tag  `orm:"many_many:post_tags"`
-}
-
-type User struct {
-    orm.BaseModel
-    Posts []Post // auto has_many via Post.AuthorID
+    Author   *User
+    Tags     []Tag `orm:"many_many:post_tags"`
 }
 ```
 

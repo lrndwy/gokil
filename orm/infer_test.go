@@ -59,6 +59,66 @@ type legacyUser struct {
 	Posts []legacyPost `orm:"reverse:author"`
 }
 
+type typedTag struct {
+	orm.BaseModel
+	Name string
+}
+
+type typedUser struct {
+	orm.BaseModel
+	Email string
+	Posts orm.HasMany[typedPost]
+}
+
+type TablePostTags string
+
+type typedPost struct {
+	orm.BaseModel
+	Title  string
+	Author orm.BelongsTo[typedUser] `orm:"required"`
+	Tags   orm.ManyMany[typedTag, TablePostTags]
+}
+
+func TestTypedRelationSyntax(t *testing.T) {
+	orm.ResetRegistry()
+
+	if err := orm.RegisterModels(&typedUser{}, &typedPost{}, &typedTag{}); err != nil {
+		t.Fatal(err)
+	}
+
+	userMeta, _ := orm.GetModel("typedUser")
+	postMeta, _ := orm.GetModel("typedPost")
+
+	postsField := userMeta.FieldByName["Posts"]
+	if postsField == nil || postsField.Relation.Type != orm.RelationHasMany {
+		t.Fatalf("Posts relation = %+v", postsField)
+	}
+	if postsField.Relation.FKColumn != "AuthorID" {
+		t.Fatalf("Posts FK = %q, want AuthorID", postsField.Relation.FKColumn)
+	}
+
+	authorField := postMeta.FieldByName["Author"]
+	if authorField == nil || authorField.Relation.Type != orm.RelationBelongsTo {
+		t.Fatalf("Author relation = %+v", authorField)
+	}
+	if authorField.Relation.FKColumn != "AuthorID" {
+		t.Fatalf("Author FK = %q, want AuthorID", authorField.Relation.FKColumn)
+	}
+
+	authorIDField := postMeta.FieldByName["AuthorID"]
+	if authorIDField == nil || !authorIDField.VirtualFK {
+		t.Fatalf("expected virtual AuthorID field, got %+v", authorIDField)
+	}
+
+	tagsField := postMeta.FieldByName["Tags"]
+	if tagsField == nil || tagsField.Relation.Type != orm.RelationManyToMany {
+		t.Fatalf("Tags relation = %+v", tagsField)
+	}
+	if tagsField.Relation.ThroughTable != "post_tags" {
+		t.Fatalf("Tags through = %q, want post_tags", tagsField.Relation.ThroughTable)
+	}
+}
+
 func TestRelationSyntaxSimple(t *testing.T) {
 	orm.ResetRegistry()
 

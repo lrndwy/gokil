@@ -188,16 +188,17 @@ type User struct {
 	orm.BaseModel
 	Email string ` + "`" + `orm:"unique,required,size:255"` + "`" + `
 	Name  string ` + "`" + `orm:"size:100"` + "`" + `
-	Posts []Post
+	Posts orm.HasMany[Post]
 }
+
+type TablePostTags string
 
 type Post struct {
 	orm.BaseModel
-	Title    string ` + "`" + `orm:"required,size:200"` + "`" + `
-	Content  string ` + "`" + `orm:"text"` + "`" + `
-	AuthorID int64  ` + "`" + `orm:"required"` + "`" + `
-	Author   *User
-	Tags     []Tag ` + "`" + `orm:"many_many:post_tags"` + "`" + `
+	Title   string ` + "`" + `orm:"required,size:200"` + "`" + `
+	Content string ` + "`" + `orm:"text"` + "`" + `
+	Author  orm.BelongsTo[User] ` + "`" + `orm:"required"` + "`" + `
+	Tags    orm.ManyMany[Tag, TablePostTags]
 }
 
 type Tag struct {
@@ -348,9 +349,9 @@ func PostCreate(ctx *views.Context) error {
 	}
 	return views.CreateAndRespond(ctx, "post", func(db context.Context) (*models.Post, error) {
 		return orm.Create(db, &models.Post{
-			Title:    input.Title,
-			Content:  input.Content,
-			AuthorID: input.AuthorID,
+			Title:   input.Title,
+			Content: input.Content,
+			Author:  orm.BelongsTo[models.User]{ID: input.AuthorID},
 		})
 	})
 }

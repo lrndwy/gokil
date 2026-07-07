@@ -327,19 +327,9 @@ func (qs *QuerySet[T]) scanRow(rows *sql.Rows) (*T, error) {
 		if !ok {
 			continue
 		}
-		fieldPtr := v.FieldByName(f.Name)
-		if !fieldPtr.IsValid() {
-			// BaseModel embedded fields
-			if f.Name == "ID" || f.Name == "CreatedAt" || f.Name == "UpdatedAt" {
-				if bm := v.FieldByName("BaseModel"); bm.IsValid() {
-					fieldPtr = bm.FieldByName(f.Name)
-				}
-			}
+		if ptr, ok := bindFieldDest(v, f); ok {
+			dest[idx] = ptr
 		}
-		if !fieldPtr.IsValid() || !fieldPtr.CanSet() {
-			continue
-		}
-		dest[idx] = fieldPtr.Addr().Interface()
 	}
 
 	if err := rows.Scan(dest...); err != nil {
@@ -414,12 +404,10 @@ func setAutoTimestamps(instance any, now time.Time) {
 }
 
 func fieldValue(v reflect.Value, name string) any {
-	f := v.FieldByName(name)
-	if !f.IsValid() {
-		if bm := v.FieldByName("BaseModel"); bm.IsValid() {
-			f = bm.FieldByName(name)
-		}
+	if id, ok := belongsToFKValue(v, name); ok {
+		return id
 	}
+	f := structFieldValue(v, name)
 	if !f.IsValid() {
 		return nil
 	}
@@ -430,6 +418,37 @@ func fieldValue(v reflect.Value, name string) any {
 		return f.Elem().Interface()
 	}
 	return f.Interface()
+}
+
+func structFieldValue(v reflect.Value, name string) reflect.Value {
+	f := v.FieldByName(name)
+	if f.IsValid() {
+		return f
+	}
+	if bm := v.FieldByName("BaseModel"); bm.IsValid() {
+		return bm.FieldByName(name)
+	}
+	return reflect.Value{}
+}
+
+func bindFieldDest(v reflect.Value, f FieldMeta) (any, bool) {
+	if f.VirtualFK {
+		rel := v.FieldByName(f.RelationOwner)
+		if !rel.IsValid() || !isBelongsToType(rel.Type()) {
+			return nil, false
+		}
+		id := rel.FieldByName("ID")
+		if !id.IsValid() || !id.CanSet() {
+			return nil, false
+		}
+		return id.Addr().Interface(), true
+	}
+
+	fieldPtr := structFieldValue(v, f.Name)
+	if !fieldPtr.IsValid() || !fieldPtr.CanSet() {
+		return nil, false
+	}
+	return fieldPtr.Addr().Interface(), true
 }
 
 func setFieldValue(v reflect.Value, name string, value any) {
