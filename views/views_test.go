@@ -92,3 +92,65 @@ func TestResponseEnvelope(t *testing.T) {
 		t.Fatalf("message = %q", body.Message)
 	}
 }
+
+func TestRequiredFields(t *testing.T) {
+	err := views.RequiredFields(map[string]string{
+		"email": "",
+		"name":  "Ali",
+	})
+	var httpErr *views.HTTPError
+	if !errors.As(err, &httpErr) {
+		t.Fatalf("expected HTTPError, got %v", err)
+	}
+	if httpErr.Status != http.StatusBadRequest {
+		t.Fatalf("status = %d", httpErr.Status)
+	}
+}
+
+func TestResourceOK(t *testing.T) {
+	rec := httptest.NewRecorder()
+	ctx := &views.Context{Writer: rec}
+
+	if err := ctx.ResourceOK("retrieved", "user", map[string]string{"name": "Ali"}); err != nil {
+		t.Fatal(err)
+	}
+	var body views.Response
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Message != "user retrieved" {
+		t.Fatalf("message = %q", body.Message)
+	}
+}
+
+func TestPagination(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/?page=2&limit=10", nil)
+	ctx := &views.Context{Request: req}
+
+	page, limit, offset := ctx.Pagination(20, 100)
+	if page != 2 || limit != 10 || offset != 10 {
+		t.Fatalf("page=%d limit=%d offset=%d", page, limit, offset)
+	}
+}
+
+func TestPaginatedResponse(t *testing.T) {
+	rec := httptest.NewRecorder()
+	ctx := &views.Context{Writer: rec}
+
+	if err := ctx.Paginated("users retrieved", []string{"a"}, views.PageMeta{
+		Total: 42,
+		Page:  1,
+		Limit: 20,
+		Pages: 3,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var body views.PaginatedResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Meta.Total != 42 {
+		t.Fatalf("total = %d", body.Meta.Total)
+	}
+}

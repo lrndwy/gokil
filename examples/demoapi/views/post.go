@@ -1,31 +1,27 @@
 package views
 
 import (
+	"context"
+
 	"demoapi/models"
 	"github.com/lrndwy/gokil/orm"
 	"github.com/lrndwy/gokil/views"
 )
 
 func getPost(ctx *views.Context, id string) (*models.Post, error) {
-	post, err := orm.Objects[models.Post](ctx.DBContext()).
-		SelectRelated("Author").
-		PrefetchRelated("Tags").
-		Filter("id", id).
-		Get()
-	if err := views.NotFoundIf(err, "post not found"); err != nil {
-		return nil, err
-	}
-	return post, nil
+	return views.FetchQuery(ctx, func(db context.Context) (*models.Post, error) {
+		return orm.Objects[models.Post](db).
+			SelectRelated("Author").
+			PrefetchRelated("Tags").
+			Filter("id", id).
+			Get()
+	}, "post not found")
 }
 
 func PostList(ctx *views.Context) error {
-	posts, err := orm.Objects[models.Post](ctx.DBContext()).
-		SelectRelated("Author").
-		All()
-	if err != nil {
-		return err
-	}
-	return ctx.OK("posts retrieved", posts)
+	return views.ListRespond(ctx, "posts retrieved", func(db context.Context) ([]*models.Post, error) {
+		return orm.Objects[models.Post](db).SelectRelated("Author").All()
+	})
 }
 
 func PostCreate(ctx *views.Context) error {
@@ -37,23 +33,28 @@ func PostCreate(ctx *views.Context) error {
 	if err := ctx.MustBindJSON(&input); err != nil {
 		return err
 	}
-	post, err := orm.Create(ctx.DBContext(), &models.Post{
-		Title:    input.Title,
-		Content:  input.Content,
-		AuthorID: input.AuthorID,
-	})
-	if err != nil {
+	if err := views.RequiredFields(map[string]string{
+		"title": input.Title,
+	}); err != nil {
 		return err
 	}
-	return ctx.Created("post created", post)
+	return views.CreateAndRespond(ctx, "post", func(db context.Context) (*models.Post, error) {
+		return orm.Create(db, &models.Post{
+			Title:    input.Title,
+			Content:  input.Content,
+			AuthorID: input.AuthorID,
+		})
+	})
 }
 
 func PostDetail(ctx *views.Context) error {
-	post, err := getPost(ctx, ctx.Param("id"))
-	if err != nil {
-		return err
-	}
-	return ctx.OK("post retrieved", post)
+	return views.DetailByQuery(ctx, "post", "post not found", func(db context.Context) (*models.Post, error) {
+		return orm.Objects[models.Post](db).
+			SelectRelated("Author").
+			PrefetchRelated("Tags").
+			Filter("id", ctx.Param("id")).
+			Get()
+	})
 }
 
 func PostUpdate(ctx *views.Context) error {
@@ -65,25 +66,20 @@ func PostUpdate(ctx *views.Context) error {
 	if err := ctx.MustBindJSON(&input); err != nil {
 		return err
 	}
-	_, err := orm.UpdateByID[models.Post](ctx.DBContext(), ctx.Param("id"), map[string]any{
+	if err := views.RequiredFields(map[string]string{
+		"title": input.Title,
+	}); err != nil {
+		return err
+	}
+	return views.UpdateAndRefresh(ctx, "id", "post", "post not found", map[string]any{
 		"title":     input.Title,
 		"content":   input.Content,
 		"author_id": input.AuthorID,
+	}, func(db context.Context, id string) (*models.Post, error) {
+		return getPost(ctx, id)
 	})
-	if err := views.NotFoundIf(err, "post not found"); err != nil {
-		return err
-	}
-	post, err := getPost(ctx, ctx.Param("id"))
-	if err != nil {
-		return err
-	}
-	return ctx.OK("post updated", post)
 }
 
 func PostDelete(ctx *views.Context) error {
-	post, err := orm.DeleteByID[models.Post](ctx.DBContext(), ctx.Param("id"))
-	if err := views.NotFoundIf(err, "post not found"); err != nil {
-		return err
-	}
-	return ctx.OK("post deleted", post)
+	return views.DeleteByParam[models.Post](ctx, "id", "post", "post not found")
 }

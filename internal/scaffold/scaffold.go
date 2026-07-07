@@ -237,6 +237,7 @@ func URLPatterns(app *framework.App, r *router.Router) {
 const viewsUserTemplate = `package views
 
 import (
+	"context"
 	"net/http"
 
 	"{{.ModPath}}/models"
@@ -249,11 +250,9 @@ func HealthCheck(ctx *views.Context) error {
 }
 
 func UserList(ctx *views.Context) error {
-	users, err := orm.Objects[models.User](ctx.DBContext()).All()
-	if err != nil {
-		return err
-	}
-	return ctx.OK("users retrieved", users)
+	return views.ListRespond(ctx, "users retrieved", func(db context.Context) ([]*models.User, error) {
+		return orm.Objects[models.User](db).All()
+	})
 }
 
 func UserCreate(ctx *views.Context) error {
@@ -264,22 +263,22 @@ func UserCreate(ctx *views.Context) error {
 	if err := ctx.MustBindJSON(&input); err != nil {
 		return err
 	}
-	user, err := orm.Create(ctx.DBContext(), &models.User{
-		Email: input.Email,
-		Name:  input.Name,
-	})
-	if err != nil {
+	if err := views.RequiredFields(map[string]string{
+		"email": input.Email,
+		"name":  input.Name,
+	}); err != nil {
 		return err
 	}
-	return ctx.Created("user created", user)
+	return views.CreateAndRespond(ctx, "user", func(db context.Context) (*models.User, error) {
+		return orm.Create(db, &models.User{
+			Email: input.Email,
+			Name:  input.Name,
+		})
+	})
 }
 
 func UserDetail(ctx *views.Context) error {
-	user, err := orm.GetByID[models.User](ctx.DBContext(), ctx.Param("id"))
-	if err := views.NotFoundIf(err, "user not found"); err != nil {
-		return err
-	}
-	return ctx.OK("user retrieved", user)
+	return views.DetailByID[models.User](ctx, "id", "user", "user not found")
 }
 
 func UserUpdate(ctx *views.Context) error {
@@ -290,53 +289,47 @@ func UserUpdate(ctx *views.Context) error {
 	if err := ctx.MustBindJSON(&input); err != nil {
 		return err
 	}
-	user, err := orm.UpdateByID[models.User](ctx.DBContext(), ctx.Param("id"), map[string]any{
+	if err := views.RequiredFields(map[string]string{
+		"email": input.Email,
+		"name":  input.Name,
+	}); err != nil {
+		return err
+	}
+	return views.UpdateByParam[models.User](ctx, "id", "user", "user not found", map[string]any{
 		"email": input.Email,
 		"name":  input.Name,
 	})
-	if err := views.NotFoundIf(err, "user not found"); err != nil {
-		return err
-	}
-	return ctx.OK("user updated", user)
 }
 
 func UserDelete(ctx *views.Context) error {
-	user, err := orm.DeleteByID[models.User](ctx.DBContext(), ctx.Param("id"))
-	if err := views.NotFoundIf(err, "user not found"); err != nil {
-		return err
-	}
-	return ctx.OK("user deleted", user)
+	return views.DeleteByParam[models.User](ctx, "id", "user", "user not found")
 }
 `
 
 const viewsPostTemplate = `package views
 
 import (
+	"context"
+
 	"{{.ModPath}}/models"
 	"github.com/lrndwy/gokil/orm"
 	"github.com/lrndwy/gokil/views"
 )
 
 func getPost(ctx *views.Context, id string) (*models.Post, error) {
-	post, err := orm.Objects[models.Post](ctx.DBContext()).
-		SelectRelated("Author").
-		PrefetchRelated("Tags").
-		Filter("id", id).
-		Get()
-	if err := views.NotFoundIf(err, "post not found"); err != nil {
-		return nil, err
-	}
-	return post, nil
+	return views.FetchQuery(ctx, func(db context.Context) (*models.Post, error) {
+		return orm.Objects[models.Post](db).
+			SelectRelated("Author").
+			PrefetchRelated("Tags").
+			Filter("id", id).
+			Get()
+	}, "post not found")
 }
 
 func PostList(ctx *views.Context) error {
-	posts, err := orm.Objects[models.Post](ctx.DBContext()).
-		SelectRelated("Author").
-		All()
-	if err != nil {
-		return err
-	}
-	return ctx.OK("posts retrieved", posts)
+	return views.ListRespond(ctx, "posts retrieved", func(db context.Context) ([]*models.Post, error) {
+		return orm.Objects[models.Post](db).SelectRelated("Author").All()
+	})
 }
 
 func PostCreate(ctx *views.Context) error {
@@ -348,23 +341,28 @@ func PostCreate(ctx *views.Context) error {
 	if err := ctx.MustBindJSON(&input); err != nil {
 		return err
 	}
-	post, err := orm.Create(ctx.DBContext(), &models.Post{
-		Title:    input.Title,
-		Content:  input.Content,
-		AuthorID: input.AuthorID,
-	})
-	if err != nil {
+	if err := views.RequiredFields(map[string]string{
+		"title": input.Title,
+	}); err != nil {
 		return err
 	}
-	return ctx.Created("post created", post)
+	return views.CreateAndRespond(ctx, "post", func(db context.Context) (*models.Post, error) {
+		return orm.Create(db, &models.Post{
+			Title:    input.Title,
+			Content:  input.Content,
+			AuthorID: input.AuthorID,
+		})
+	})
 }
 
 func PostDetail(ctx *views.Context) error {
-	post, err := getPost(ctx, ctx.Param("id"))
-	if err != nil {
-		return err
-	}
-	return ctx.OK("post retrieved", post)
+	return views.DetailByQuery(ctx, "post", "post not found", func(db context.Context) (*models.Post, error) {
+		return orm.Objects[models.Post](db).
+			SelectRelated("Author").
+			PrefetchRelated("Tags").
+			Filter("id", ctx.Param("id")).
+			Get()
+	})
 }
 
 func PostUpdate(ctx *views.Context) error {
@@ -376,44 +374,39 @@ func PostUpdate(ctx *views.Context) error {
 	if err := ctx.MustBindJSON(&input); err != nil {
 		return err
 	}
-	_, err := orm.UpdateByID[models.Post](ctx.DBContext(), ctx.Param("id"), map[string]any{
+	if err := views.RequiredFields(map[string]string{
+		"title": input.Title,
+	}); err != nil {
+		return err
+	}
+	return views.UpdateAndRefresh(ctx, "id", "post", "post not found", map[string]any{
 		"title":     input.Title,
 		"content":   input.Content,
 		"author_id": input.AuthorID,
+	}, func(db context.Context, id string) (*models.Post, error) {
+		return getPost(ctx, id)
 	})
-	if err := views.NotFoundIf(err, "post not found"); err != nil {
-		return err
-	}
-	post, err := getPost(ctx, ctx.Param("id"))
-	if err != nil {
-		return err
-	}
-	return ctx.OK("post updated", post)
 }
 
 func PostDelete(ctx *views.Context) error {
-	post, err := orm.DeleteByID[models.Post](ctx.DBContext(), ctx.Param("id"))
-	if err := views.NotFoundIf(err, "post not found"); err != nil {
-		return err
-	}
-	return ctx.OK("post deleted", post)
+	return views.DeleteByParam[models.Post](ctx, "id", "post", "post not found")
 }
 `
 
 const viewsTagTemplate = `package views
 
 import (
+	"context"
+
 	"{{.ModPath}}/models"
 	"github.com/lrndwy/gokil/orm"
 	"github.com/lrndwy/gokil/views"
 )
 
 func TagList(ctx *views.Context) error {
-	tags, err := orm.Objects[models.Tag](ctx.DBContext()).All()
-	if err != nil {
-		return err
-	}
-	return ctx.OK("tags retrieved", tags)
+	return views.ListRespond(ctx, "tags retrieved", func(db context.Context) ([]*models.Tag, error) {
+		return orm.Objects[models.Tag](db).All()
+	})
 }
 
 func TagCreate(ctx *views.Context) error {
@@ -423,19 +416,16 @@ func TagCreate(ctx *views.Context) error {
 	if err := ctx.MustBindJSON(&input); err != nil {
 		return err
 	}
-	tag, err := orm.Create(ctx.DBContext(), &models.Tag{Name: input.Name})
-	if err != nil {
+	if err := views.Required("name", input.Name); err != nil {
 		return err
 	}
-	return ctx.Created("tag created", tag)
+	return views.CreateAndRespond(ctx, "tag", func(db context.Context) (*models.Tag, error) {
+		return orm.Create(db, &models.Tag{Name: input.Name})
+	})
 }
 
 func TagDetail(ctx *views.Context) error {
-	tag, err := orm.GetByID[models.Tag](ctx.DBContext(), ctx.Param("id"))
-	if err := views.NotFoundIf(err, "tag not found"); err != nil {
-		return err
-	}
-	return ctx.OK("tag retrieved", tag)
+	return views.DetailByID[models.Tag](ctx, "id", "tag", "tag not found")
 }
 
 func TagUpdate(ctx *views.Context) error {
@@ -445,21 +435,16 @@ func TagUpdate(ctx *views.Context) error {
 	if err := ctx.MustBindJSON(&input); err != nil {
 		return err
 	}
-	tag, err := orm.UpdateByID[models.Tag](ctx.DBContext(), ctx.Param("id"), map[string]any{
-		"name": input.Name,
-	})
-	if err := views.NotFoundIf(err, "tag not found"); err != nil {
+	if err := views.Required("name", input.Name); err != nil {
 		return err
 	}
-	return ctx.OK("tag updated", tag)
+	return views.UpdateByParam[models.Tag](ctx, "id", "tag", "tag not found", map[string]any{
+		"name": input.Name,
+	})
 }
 
 func TagDelete(ctx *views.Context) error {
-	tag, err := orm.DeleteByID[models.Tag](ctx.DBContext(), ctx.Param("id"))
-	if err := views.NotFoundIf(err, "tag not found"); err != nil {
-		return err
-	}
-	return ctx.OK("tag deleted", tag)
+	return views.DeleteByParam[models.Tag](ctx, "id", "tag", "tag not found")
 }
 `
 

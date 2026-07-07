@@ -27,6 +27,27 @@ func Conflict(message string) error {
 	return &HTTPError{Status: http.StatusConflict, Message: message}
 }
 
+func Unauthorized(message string) error {
+	return &HTTPError{Status: http.StatusUnauthorized, Message: message}
+}
+
+func Forbidden(message string) error {
+	return &HTTPError{Status: http.StatusForbidden, Message: message}
+}
+
+func UnprocessableEntity(message string) error {
+	return &HTTPError{Status: http.StatusUnprocessableEntity, Message: message}
+}
+
+func Internal(message string) error {
+	return &HTTPError{Status: http.StatusInternalServerError, Message: message}
+}
+
+// Validation is an alias for UnprocessableEntity.
+func Validation(message string) error {
+	return UnprocessableEntity(message)
+}
+
 // HandleError writes a JSON error response. HTTPError uses its status code; other errors become 500.
 func HandleError(c *Context, err error) error {
 	if err == nil {

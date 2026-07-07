@@ -1,6 +1,7 @@
 package views
 
 import (
+	"context"
 	"net/http"
 
 	"demoapi/models"
@@ -13,11 +14,9 @@ func HealthCheck(ctx *views.Context) error {
 }
 
 func UserList(ctx *views.Context) error {
-	users, err := orm.Objects[models.User](ctx.DBContext()).All()
-	if err != nil {
-		return err
-	}
-	return ctx.OK("users retrieved", users)
+	return views.ListRespond(ctx, "users retrieved", func(db context.Context) ([]*models.User, error) {
+		return orm.Objects[models.User](db).All()
+	})
 }
 
 func UserCreate(ctx *views.Context) error {
@@ -28,22 +27,22 @@ func UserCreate(ctx *views.Context) error {
 	if err := ctx.MustBindJSON(&input); err != nil {
 		return err
 	}
-	user, err := orm.Create(ctx.DBContext(), &models.User{
-		Email: input.Email,
-		Name:  input.Name,
-	})
-	if err != nil {
+	if err := views.RequiredFields(map[string]string{
+		"email": input.Email,
+		"name":  input.Name,
+	}); err != nil {
 		return err
 	}
-	return ctx.Created("user created", user)
+	return views.CreateAndRespond(ctx, "user", func(db context.Context) (*models.User, error) {
+		return orm.Create(db, &models.User{
+			Email: input.Email,
+			Name:  input.Name,
+		})
+	})
 }
 
 func UserDetail(ctx *views.Context) error {
-	user, err := orm.GetByID[models.User](ctx.DBContext(), ctx.Param("id"))
-	if err := views.NotFoundIf(err, "user not found"); err != nil {
-		return err
-	}
-	return ctx.OK("user retrieved", user)
+	return views.DetailByID[models.User](ctx, "id", "user", "user not found")
 }
 
 func UserUpdate(ctx *views.Context) error {
@@ -54,20 +53,18 @@ func UserUpdate(ctx *views.Context) error {
 	if err := ctx.MustBindJSON(&input); err != nil {
 		return err
 	}
-	user, err := orm.UpdateByID[models.User](ctx.DBContext(), ctx.Param("id"), map[string]any{
+	if err := views.RequiredFields(map[string]string{
+		"email": input.Email,
+		"name":  input.Name,
+	}); err != nil {
+		return err
+	}
+	return views.UpdateByParam[models.User](ctx, "id", "user", "user not found", map[string]any{
 		"email": input.Email,
 		"name":  input.Name,
 	})
-	if err := views.NotFoundIf(err, "user not found"); err != nil {
-		return err
-	}
-	return ctx.OK("user updated", user)
 }
 
 func UserDelete(ctx *views.Context) error {
-	user, err := orm.DeleteByID[models.User](ctx.DBContext(), ctx.Param("id"))
-	if err := views.NotFoundIf(err, "user not found"); err != nil {
-		return err
-	}
-	return ctx.OK("user deleted", user)
+	return views.DeleteByParam[models.User](ctx, "id", "user", "user not found")
 }

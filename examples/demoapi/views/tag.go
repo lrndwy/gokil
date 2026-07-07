@@ -1,17 +1,17 @@
 package views
 
 import (
+	"context"
+
 	"demoapi/models"
 	"github.com/lrndwy/gokil/orm"
 	"github.com/lrndwy/gokil/views"
 )
 
 func TagList(ctx *views.Context) error {
-	tags, err := orm.Objects[models.Tag](ctx.DBContext()).All()
-	if err != nil {
-		return err
-	}
-	return ctx.OK("tags retrieved", tags)
+	return views.ListRespond(ctx, "tags retrieved", func(db context.Context) ([]*models.Tag, error) {
+		return orm.Objects[models.Tag](db).All()
+	})
 }
 
 func TagCreate(ctx *views.Context) error {
@@ -21,19 +21,16 @@ func TagCreate(ctx *views.Context) error {
 	if err := ctx.MustBindJSON(&input); err != nil {
 		return err
 	}
-	tag, err := orm.Create(ctx.DBContext(), &models.Tag{Name: input.Name})
-	if err != nil {
+	if err := views.Required("name", input.Name); err != nil {
 		return err
 	}
-	return ctx.Created("tag created", tag)
+	return views.CreateAndRespond(ctx, "tag", func(db context.Context) (*models.Tag, error) {
+		return orm.Create(db, &models.Tag{Name: input.Name})
+	})
 }
 
 func TagDetail(ctx *views.Context) error {
-	tag, err := orm.GetByID[models.Tag](ctx.DBContext(), ctx.Param("id"))
-	if err := views.NotFoundIf(err, "tag not found"); err != nil {
-		return err
-	}
-	return ctx.OK("tag retrieved", tag)
+	return views.DetailByID[models.Tag](ctx, "id", "tag", "tag not found")
 }
 
 func TagUpdate(ctx *views.Context) error {
@@ -43,19 +40,14 @@ func TagUpdate(ctx *views.Context) error {
 	if err := ctx.MustBindJSON(&input); err != nil {
 		return err
 	}
-	tag, err := orm.UpdateByID[models.Tag](ctx.DBContext(), ctx.Param("id"), map[string]any{
-		"name": input.Name,
-	})
-	if err := views.NotFoundIf(err, "tag not found"); err != nil {
+	if err := views.Required("name", input.Name); err != nil {
 		return err
 	}
-	return ctx.OK("tag updated", tag)
+	return views.UpdateByParam[models.Tag](ctx, "id", "tag", "tag not found", map[string]any{
+		"name": input.Name,
+	})
 }
 
 func TagDelete(ctx *views.Context) error {
-	tag, err := orm.DeleteByID[models.Tag](ctx.DBContext(), ctx.Param("id"))
-	if err := views.NotFoundIf(err, "tag not found"); err != nil {
-		return err
-	}
-	return ctx.OK("tag deleted", tag)
+	return views.DeleteByParam[models.Tag](ctx, "id", "tag", "tag not found")
 }
