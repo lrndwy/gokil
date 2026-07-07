@@ -42,7 +42,7 @@ func main() {
 			log.Fatal(err)
 		}
 	case "version":
-		fmt.Println("gokil v0.1.0")
+		printVersion()
 	default:
 		usage()
 		os.Exit(1)
