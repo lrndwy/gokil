@@ -8,9 +8,9 @@ import (
 
 	"demoapi"
 	_ "demoapi/models"
-	"gokil/framework"
-	"gokil/migration"
-	"gokil/orm"
+	"github.com/lrndwy/gokil/framework"
+	"github.com/lrndwy/gokil/migration"
+	"github.com/lrndwy/gokil/orm"
 )
 
 func main() {

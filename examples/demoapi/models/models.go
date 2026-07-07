@@ -1,6 +1,6 @@
 package models
 
-import "gokil/orm"
+import "github.com/lrndwy/gokil/orm"
 
 func init() {
 	_ = orm.RegisterModels(

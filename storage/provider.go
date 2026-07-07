@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	"gokil/config"
+	"github.com/lrndwy/gokil/config"
 )
 
 type Provider interface {

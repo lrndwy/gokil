@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"gokil/router"
+	"github.com/lrndwy/gokil/router"
 )
 
 func TestPathParams(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"gokil/orm"
+	"github.com/lrndwy/gokil/orm"
 )
 
 type Detector struct {

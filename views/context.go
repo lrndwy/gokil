@@ -6,8 +6,8 @@ import (
 	"io"
 	"net/http"
 
-	"gokil/orm"
-	"gokil/storage"
+	"github.com/lrndwy/gokil/orm"
+	"github.com/lrndwy/gokil/storage"
 )
 
 type Handler func(*Context) error

@@ -2,8 +2,8 @@ package demoapi
 
 import (
 	"demoapi/views"
-	"gokil/framework"
-	"gokil/router"
+	"github.com/lrndwy/gokil/framework"
+	"github.com/lrndwy/gokil/router"
 )
 
 func URLPatterns(app *framework.App, r *router.Router) {

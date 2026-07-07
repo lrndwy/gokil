@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"gokil/migration"
-	"gokil/orm"
+	"github.com/lrndwy/gokil/migration"
+	"github.com/lrndwy/gokil/orm"
 )
 
 func TestRenderCreateTable(t *testing.T) {

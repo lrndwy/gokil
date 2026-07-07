@@ -13,12 +13,20 @@ Framework Go backend REST API dengan pola pengembangan mirip Django.
 - **ORM penuh** — CRUD, filter, relasi `SelectRelated` / `PrefetchRelated`
 - **Tanpa tabel bawaan** — tidak ada auto-migration untuk user/auth; semua tabel didefinisikan manual di `models.go`
 
+## Install
+
+```bash
+go install github.com/lrndwy/gokil/cmd/gokil@latest
+```
+
+Setelah terinstall, CLI `gokil` tersedia di `$GOPATH/bin` (pastikan ada di `PATH`).
+
 ## Quick Start
 
 ### 1. Buat project baru
 
 ```bash
-go run ./cmd/gokil startproject myapi
+gokil startproject myapi
 cd myapi
 ```
 
@@ -35,7 +43,7 @@ export $(grep -v '^#' .env | xargs)
 ```go
 package models
 
-import "gokil/orm"
+import "github.com/lrndwy/gokil/orm"
 
 func init() {
     _ = orm.RegisterModels(&User{})
@@ -176,9 +184,10 @@ url, err := ctx.Storage.URL("uploads/file.pdf")
 ### Framework (`gokil`)
 
 ```bash
-go run ./cmd/gokil startproject <name>   # Buat project baru
-go run ./cmd/gokil doctor                # Validasi konfigurasi
-go run ./cmd/gokil version
+go install github.com/lrndwy/gokil/cmd/gokil@latest
+gokil startproject <name>   # Buat project baru
+gokil doctor                # Validasi konfigurasi (dari project)
+gokil version
 ```
 
 ### Project (`cmd/<name>`)

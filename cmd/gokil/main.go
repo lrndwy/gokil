@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gokil/config"
-	"gokil/internal/scaffold"
-	"gokil/migration"
-	"gokil/orm"
+	"github.com/lrndwy/gokil/config"
+	"github.com/lrndwy/gokil/internal/scaffold"
+	"github.com/lrndwy/gokil/migration"
+	"github.com/lrndwy/gokil/orm"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )

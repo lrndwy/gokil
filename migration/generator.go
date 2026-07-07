@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"gokil/orm"
+	"github.com/lrndwy/gokil/orm"
 )
 
 type Generator struct {

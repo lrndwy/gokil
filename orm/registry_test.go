@@ -3,7 +3,7 @@ package orm_test
 import (
 	"testing"
 
-	"gokil/orm"
+	"github.com/lrndwy/gokil/orm"
 )
 
 func TestRegisterModels(t *testing.T) {

@@ -89,14 +89,12 @@ const goModTemplate = `module {{.ModPath}}
 
 go 1.22
 
-require gokil v0.0.0
-
-replace gokil => {{.ReplacePath}}
+require github.com/lrndwy/gokil v0.1.0
 `
 
 const settingsTemplate = `package {{.Name}}
 
-import "gokil/config"
+import "github.com/lrndwy/gokil/config"
 
 func LoadSettings() (config.Settings, error) {
 	return config.Load(config.Options{})
@@ -105,7 +103,7 @@ func LoadSettings() (config.Settings, error) {
 
 const modelsTemplate = `package models
 
-import "gokil/orm"
+import "github.com/lrndwy/gokil/orm"
 
 func init() {
 	_ = orm.RegisterModels(
@@ -141,8 +139,8 @@ const urlsTemplate = `package {{.Name}}
 
 import (
 	"{{.ModPath}}/views"
-	"gokil/framework"
-	"gokil/router"
+	"github.com/lrndwy/gokil/framework"
+	"github.com/lrndwy/gokil/router"
 )
 
 func URLPatterns(app *framework.App, r *router.Router) {
@@ -163,8 +161,8 @@ import (
 	"net/http"
 
 	"{{.ModPath}}/models"
-	"gokil/orm"
-	"gokil/views"
+	"github.com/lrndwy/gokil/orm"
+	"github.com/lrndwy/gokil/views"
 )
 
 func HealthCheck(ctx *views.Context) error {
@@ -218,8 +216,8 @@ import (
 	"net/http"
 
 	"{{.ModPath}}/models"
-	"gokil/orm"
-	"gokil/views"
+	"github.com/lrndwy/gokil/orm"
+	"github.com/lrndwy/gokil/views"
 )
 
 func PostList(ctx *views.Context) error {
@@ -278,9 +276,9 @@ import (
 
 	"{{.ModPath}}"
 	_ "{{.ModPath}}/models"
-	"gokil/framework"
-	"gokil/migration"
-	"gokil/orm"
+	"github.com/lrndwy/gokil/framework"
+	"github.com/lrndwy/gokil/migration"
+	"github.com/lrndwy/gokil/orm"
 )
 
 func main() {

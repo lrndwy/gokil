@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	"gokil/config"
+	"github.com/lrndwy/gokil/config"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"

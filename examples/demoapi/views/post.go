@@ -5,8 +5,8 @@ import (
 	"net/http"
 
 	"demoapi/models"
-	"gokil/orm"
-	"gokil/views"
+	"github.com/lrndwy/gokil/orm"
+	"github.com/lrndwy/gokil/views"
 )
 
 func PostList(ctx *views.Context) error {

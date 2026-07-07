@@ -7,11 +7,11 @@ import (
 	"net/http"
 	"strconv"
 
-	"gokil/config"
-	"gokil/orm"
-	"gokil/router"
-	"gokil/storage"
-	"gokil/views"
+	"github.com/lrndwy/gokil/config"
+	"github.com/lrndwy/gokil/orm"
+	"github.com/lrndwy/gokil/router"
+	"github.com/lrndwy/gokil/storage"
+	"github.com/lrndwy/gokil/views"
 )
 
 type URLConfigurator func(*router.Router)
