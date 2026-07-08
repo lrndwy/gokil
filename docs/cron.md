@@ -1,3 +1,8 @@
+---
+title: Cron Jobs
+nav_order: 8
+---
+
 ## Cron Jobs
 
 Gokil menyediakan runner sederhana untuk background jobs: `github.com/lrndwy/gokil/cron`.

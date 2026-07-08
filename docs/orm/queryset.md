@@ -1,3 +1,9 @@
+---
+title: QuerySet
+parent: ORM
+nav_order: 2
+---
+
 ## QuerySet
 
 QuerySet adalah API query utama:

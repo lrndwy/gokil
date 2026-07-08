@@ -1,3 +1,8 @@
+---
+title: Migrations
+nav_order: 7
+---
+
 ## Migrasi
 
 Gokil punya workflow mirip Django:

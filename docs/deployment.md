@@ -1,3 +1,8 @@
+---
+title: Deployment
+nav_order: 10
+---
+
 ## Deployment & Docker
 
 ### Jalankan dengan Docker Compose (dev)

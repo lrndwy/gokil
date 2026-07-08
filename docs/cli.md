@@ -1,3 +1,8 @@
+---
+title: CLI
+nav_order: 3
+---
+
 ## CLI `gokil`
 
 ### `startproject`

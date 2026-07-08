@@ -1,3 +1,9 @@
+---
+title: Errors & Response
+parent: Views
+nav_order: 2
+---
+
 ## Error handling & response envelope
 
 ### Response sukses

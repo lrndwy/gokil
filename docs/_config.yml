@@ -1,5 +1,15 @@
 title: Gokil Framework
 description: Dokumentasi Gokil (Go REST API framework)
-theme: jekyll-theme-cayman
+remote_theme: just-the-docs/just-the-docs
+plugins:
+  - jekyll-remote-theme
 markdown: kramdown
+
+color_scheme: light
+search_enabled: true
+heading_anchors: true
+
+# GitHub Pages usually serves at /<repo>/
+# Set this when you know the repo name, e.g. /gokil/
+# baseurl: ""
 

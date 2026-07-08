@@ -1,3 +1,9 @@
+---
+title: Helpers
+parent: Views
+nav_order: 1
+---
+
 ## Views helpers (konsep konsisten)
 
 Tujuan helper `views` adalah: handler singkat, parameter jelas, dan tidak perlu closure `func(db context.Context) ...` untuk kasus umum.

@@ -1,3 +1,8 @@
+---
+title: Storage
+nav_order: 9
+---
+
 ## Storage
 
 Gokil punya abstraction storage:

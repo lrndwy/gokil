@@ -1,3 +1,8 @@
+---
+title: GitHub Pages
+nav_order: 11
+---
+
 ## Setup GitHub Pages untuk folder `docs/`
 
 Dokumentasi ini dibuat agar bisa langsung dipublish via GitHub Pages menggunakan **Jekyll theme bawaan** (tanpa install tools tambahan).

@@ -1,3 +1,8 @@
+---
+title: Project Structure
+nav_order: 4
+---
+
 ## Struktur project
 
 Project hasil `gokil startproject` umumnya seperti ini:
