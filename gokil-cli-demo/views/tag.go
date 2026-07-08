@@ -1,15 +1,17 @@
 package views
 
 import (
-	"context"
-
 	"gokil-cli-demo/models"
 	"github.com/lrndwy/gokil/orm"
 	"github.com/lrndwy/gokil/views"
 )
 
 func TagList(ctx *views.Context) error {
-	return views.List(ctx, "tags retrieved", orm.Objects[models.Tag](ctx.DBContext()))
+	tags, err := orm.Objects[models.Tag](ctx.DBContext()).All()
+	if err != nil {
+		return err
+	}
+	return views.Listed(ctx, tags, "tags retrieved")
 }
 
 func TagCreate(ctx *views.Context) error {
@@ -22,11 +24,19 @@ func TagCreate(ctx *views.Context) error {
 	if err := views.Required("name", input.Name); err != nil {
 		return err
 	}
-	return views.Create(ctx, "tag", &models.Tag{Name: input.Name})
+	created, err := orm.Create(ctx.DBContext(), &models.Tag{Name: input.Name})
+	if err != nil {
+		return err
+	}
+	return views.Created(ctx, created, "tags created")
 }
 
 func TagDetail(ctx *views.Context) error {
-	return views.DetailByID[models.Tag](ctx, "id", "tag", "tag not found")
+	tag, err := orm.GetByID[models.Tag](ctx.DBContext(), ctx.Param("id"))
+	if err := views.NotFoundIf(err, "tag not found"); err != nil {
+		return err
+	}
+	return views.Detailed(ctx, tag, "tag retrieved")
 }
 
 func TagUpdate(ctx *views.Context) error {
@@ -39,11 +49,27 @@ func TagUpdate(ctx *views.Context) error {
 	if err := views.Required("name", input.Name); err != nil {
 		return err
 	}
-	return views.Update[models.Tag](ctx, "id", "tag", "tag not found", map[string]any{
+	_, err := orm.UpdateByID[models.Tag](ctx.DBContext(), ctx.Param("id"), map[string]any{
 		"name": input.Name,
 	})
+	if err != nil {
+		return err
+	}
+	tagUpdated, err := orm.GetByID[models.Tag](ctx.DBContext(), ctx.Param("id"))
+	if err := views.NotFoundIf(err, "tag not found"); err != nil {
+		return err
+	}
+	return views.Updated(ctx, tagUpdated, "tags updated")
 }
 
 func TagDelete(ctx *views.Context) error {
-	return views.Delete[models.Tag](ctx, "id", "tag", "tag not found")
+	tag, err := orm.GetByID[models.Tag](ctx.DBContext(), ctx.Param("id"))
+	if err := views.NotFoundIf(err, "tag not found"); err != nil {
+		return err
+	}
+	_, err = orm.DeleteByID[models.Tag](ctx.DBContext(), ctx.Param("id"))
+	if err != nil {
+		return err
+	}
+	return views.Deleted(ctx, tag, "tags deleted")
 }
