@@ -301,14 +301,14 @@ func UserUpdate(ctx *views.Context) error {
 	}); err != nil {
 		return err
 	}
-	return views.UpdateByParam[models.User](ctx, "id", "user", "user not found", map[string]any{
+	return views.Update[models.User](ctx, "id", "user", "user not found", map[string]any{
 		"email": input.Email,
 		"name":  input.Name,
 	})
 }
 
 func UserDelete(ctx *views.Context) error {
-	return views.DeleteByParam[models.User](ctx, "id", "user", "user not found")
+	return views.Delete[models.User](ctx, "id", "user", "user not found")
 }
 `
 
@@ -393,7 +393,7 @@ func PostUpdate(ctx *views.Context) error {
 }
 
 func PostDelete(ctx *views.Context) error {
-	return views.DeleteByParam[models.Post](ctx, "id", "post", "post not found")
+	return views.Delete[models.Post](ctx, "id", "post", "post not found")
 }
 `
 
@@ -438,13 +438,13 @@ func TagUpdate(ctx *views.Context) error {
 	if err := views.Required("name", input.Name); err != nil {
 		return err
 	}
-	return views.UpdateByParam[models.Tag](ctx, "id", "tag", "tag not found", map[string]any{
+	return views.Update[models.Tag](ctx, "id", "tag", "tag not found", map[string]any{
 		"name": input.Name,
 	})
 }
 
 func TagDelete(ctx *views.Context) error {
-	return views.DeleteByParam[models.Tag](ctx, "id", "tag", "tag not found")
+	return views.Delete[models.Tag](ctx, "id", "tag", "tag not found")
 }
 `
 

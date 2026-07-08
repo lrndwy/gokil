@@ -6,11 +6,14 @@ import (
 	"github.com/lrndwy/gokil/orm"
 )
 
+// QuerySet is a shorthand type used by views helpers.
+type QuerySet[T any] = orm.QuerySet[T]
+
 // List runs qs.All() and writes the standard success envelope.
 //
 // Example:
 //   return views.List(ctx, "tags retrieved", orm.Objects[models.Tag](ctx.DBContext()))
-func List[T any](c *Context, message string, qs *orm.QuerySet[T]) error {
+func List[T any](c *Context, message string, qs *QuerySet[T]) error {
 	items, err := qs.All()
 	if err != nil {
 		return err
@@ -27,12 +30,47 @@ func List[T any](c *Context, message string, qs *orm.QuerySet[T]) error {
 //   return views.Detail(ctx, "post", "post not found",
 //       orm.Objects[models.Post](ctx.DBContext()).SelectRelated("Author").Filter("id", ctx.Param("id")),
 //   )
-func Detail[T any](c *Context, resource, notFound string, qs *orm.QuerySet[T]) error {
+func Detail[T any](c *Context, resource, notFound string, qs *QuerySet[T]) error {
 	obj, err := qs.Get()
 	if err := NotFoundIf(err, notFound); err != nil {
 		return err
 	}
 	return c.ResourceOK("retrieved", resource, obj)
+}
+
+// Paginated runs qs.All()+qs.Count() and writes a paginated envelope.
+//
+// Example:
+//   return views.Paginated(ctx, "users retrieved",
+//       orm.Objects[models.User](ctx.DBContext()).Filter("name__icontains", q),
+//       20, 100,
+//   )
+func Paginated[T any](c *Context, message string, qs *QuerySet[T], defaultLimit, maxLimit int) error {
+	page, limit, offset := c.Pagination(defaultLimit, maxLimit)
+	items, err := qs.Limit(limit).Offset(offset).All()
+	if err != nil {
+		return err
+	}
+	if items == nil {
+		items = make([]*T, 0)
+	}
+	total, err := qs.Count()
+	if err != nil {
+		return err
+	}
+	pages := int(total) / limit
+	if int(total)%limit != 0 {
+		pages++
+	}
+	if pages == 0 {
+		pages = 1
+	}
+	return c.Paginated(message, items, PageMeta{
+		Total: total,
+		Page:  page,
+		Limit: limit,
+		Pages: pages,
+	})
 }
 
 // FetchByID loads one record by id and maps sql.ErrNoRows to notFound.

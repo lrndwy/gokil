@@ -39,11 +39,11 @@ func TagUpdate(ctx *views.Context) error {
 	if err := views.Required("name", input.Name); err != nil {
 		return err
 	}
-	return views.UpdateByParam[models.Tag](ctx, "id", "tag", "tag not found", map[string]any{
+	return views.Update[models.Tag](ctx, "id", "tag", "tag not found", map[string]any{
 		"name": input.Name,
 	})
 }
 
 func TagDelete(ctx *views.Context) error {
-	return views.DeleteByParam[models.Tag](ctx, "id", "tag", "tag not found")
+	return views.Delete[models.Tag](ctx, "id", "tag", "tag not found")
 }

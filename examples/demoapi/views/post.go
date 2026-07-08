@@ -79,5 +79,5 @@ func PostUpdate(ctx *views.Context) error {
 }
 
 func PostDelete(ctx *views.Context) error {
-	return views.DeleteByParam[models.Post](ctx, "id", "post", "post not found")
+	return views.Delete[models.Post](ctx, "id", "post", "post not found")
 }

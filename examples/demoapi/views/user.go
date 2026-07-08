@@ -52,12 +52,12 @@ func UserUpdate(ctx *views.Context) error {
 	}); err != nil {
 		return err
 	}
-	return views.UpdateByParam[models.User](ctx, "id", "user", "user not found", map[string]any{
+	return views.Update[models.User](ctx, "id", "user", "user not found", map[string]any{
 		"email": input.Email,
 		"name":  input.Name,
 	})
 }
 
 func UserDelete(ctx *views.Context) error {
-	return views.DeleteByParam[models.User](ctx, "id", "user", "user not found")
+	return views.Delete[models.User](ctx, "id", "user", "user not found")
 }
