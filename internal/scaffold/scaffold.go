@@ -8,6 +8,7 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/lrndwy/gokil/cliui"
 	"github.com/lrndwy/gokil/version"
 )
 
@@ -51,6 +52,9 @@ func Create(opts Options) error {
 	if err := validateInfra(templateData); err != nil {
 		return err
 	}
+
+	sp := cliui.NewSpinner(os.Stdout)
+	sp.Start("Creating project files")
 
 	files := map[string]string{
 		"go.mod":              goModTemplate,
@@ -97,16 +101,22 @@ func Create(opts Options) error {
 	if err := os.MkdirAll(storageDir, 0o755); err != nil {
 		return err
 	}
+	sp.Success("Created project files")
 
+	sp.Start("Running go mod tidy")
 	if err := tidyModule(dir, modCfg); err != nil {
+		sp.Fail("Running go mod tidy")
 		return fmt.Errorf("go mod tidy: %w", err)
 	}
+	sp.Success("Finished go mod tidy")
 
-	fmt.Printf("Created project %s\n", dir)
+	fmt.Println()
+	cliui.Successf("Created project %s", dir)
 	if templateData.Infra.NeedsDockerCompose() {
-		fmt.Println("Docker Compose: docker-compose.yml")
-		fmt.Println("Environment: .env (generated from .env.example)")
-		fmt.Println("Next:")
+		cliui.Infof("Docker Compose: docker-compose.yml")
+		cliui.Infof("Environment: .env (generated from .env.example)")
+		fmt.Println()
+		fmt.Println(cliui.Bold("Next:"))
 		fmt.Println("  cd", dir)
 		fmt.Println("  docker compose up -d")
 		fmt.Println("  go run ./cmd/"+name, "makemigrations initial")
@@ -114,7 +124,8 @@ func Create(opts Options) error {
 		fmt.Println("  go run ./cmd/"+name, "serve")
 		return nil
 	}
-	fmt.Println("Next: cd", dir, "&& cp .env.example .env")
+	fmt.Println()
+	fmt.Println(cliui.Bold("Next:"), "cd", dir, "&& cp .env.example .env")
 	return nil
 }
 
@@ -459,6 +470,7 @@ import (
 
 	"{{.ModPath}}"
 	_ "{{.ModPath}}/models"
+	"github.com/lrndwy/gokil/cliui"
 	"github.com/lrndwy/gokil/framework"
 	"github.com/lrndwy/gokil/migration"
 	"github.com/lrndwy/gokil/orm"
@@ -520,35 +532,49 @@ func runMakeMigrations(args []string) error {
 		name = args[0]
 	}
 
+	sp := cliui.NewSpinner(os.Stdout)
+	sp.Start("Loading settings")
+
 	settings, err := {{.Name}}.LoadSettings()
 	if err != nil {
+		sp.Fail("Loading settings")
 		return err
 	}
 	if settings.Database.DSN == "" {
 		return fmt.Errorf("GOKIL_DB_DSN is required")
 	}
+	sp.Success("Loaded settings")
 
+	sp.Start("Connecting to database")
 	db, err := orm.Connect(settings.Database.Driver, settings.Database.DSN, settings.Database.MaxOpenConns, settings.Database.MaxIdleConns)
 	if err != nil {
+		sp.Fail("Connecting to database")
 		return err
 	}
 	defer db.Close()
+	sp.Success("Connected to database")
 
+	sp.Start("Detecting schema changes")
 	detector := migration.Detector{DB: db.DB}
 	diff, err := detector.Detect()
 	if err != nil {
+		sp.Fail("Detecting schema changes")
 		return err
 	}
+	sp.Success("Detected schema changes")
+
 	if !migration.HasChanges(diff) {
-		fmt.Println("No changes detected")
+		cliui.Infof("No changes detected")
 		return nil
 	}
 
+	sp.Start("Generating migration files")
 	path, err := migration.Generator{Dir: settings.Database.MigrationsDir}.GenerateFromDiff(diff, name)
 	if err != nil {
+		sp.Fail("Generating migration files")
 		return err
 	}
-	fmt.Printf("Created migration: %s\n", path)
+	sp.Success(fmt.Sprintf("Created migration: %s", path))
 	return nil
 }
 
@@ -560,34 +586,50 @@ func runMigrate(args []string) error {
 		}
 	}
 
+	sp := cliui.NewSpinner(os.Stdout)
+	sp.Start("Loading settings")
+
 	settings, err := {{.Name}}.LoadSettings()
 	if err != nil {
+		sp.Fail("Loading settings")
 		return err
 	}
 	if settings.Database.DSN == "" {
 		return fmt.Errorf("GOKIL_DB_DSN is required")
 	}
+	sp.Success("Loaded settings")
 
+	sp.Start("Connecting to database")
 	db, err := orm.Connect(settings.Database.Driver, settings.Database.DSN, settings.Database.MaxOpenConns, settings.Database.MaxIdleConns)
 	if err != nil {
+		sp.Fail("Connecting to database")
 		return err
 	}
 	defer db.Close()
+	sp.Success("Connected to database")
 
 	runner := migration.Runner{DB: db.DB, Dir: settings.Database.MigrationsDir}
 	if rollback {
+		sp.Start("Rolling back last migration")
 		if err := runner.Rollback(); err != nil {
+			sp.Fail("Rolling back last migration")
 			return err
 		}
-		fmt.Println("Rolled back last migration")
+		sp.Success("Rolled back last migration")
 		return nil
 	}
 
+	sp.Start("Applying migrations")
 	count, err := runner.Migrate()
 	if err != nil {
+		sp.Fail("Applying migrations")
 		return err
 	}
-	fmt.Printf("Applied %d migration(s)\n", count)
+	if count == 0 {
+		sp.Success("No pending migrations")
+		return nil
+	}
+	sp.Success(fmt.Sprintf("Applied %d migration(s)", count))
 	return nil
 }
 `

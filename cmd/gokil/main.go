@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/lrndwy/gokil/cliui"
 	"github.com/lrndwy/gokil/config"
 	"github.com/lrndwy/gokil/internal/scaffold"
 	"github.com/lrndwy/gokil/migration"
@@ -116,6 +117,9 @@ func startproject(args []string) error {
 		}
 	}
 
+	fmt.Println(cliui.Cyan("gokil") + " " + cliui.Dim("startproject") + " " + cliui.Bold(name))
+	fmt.Println()
+
 	return scaffold.Create(scaffold.Options{
 		Name:    name,
 		Dir:     outDir,
@@ -133,15 +137,21 @@ func makemigrations(args []string) error {
 		name = flags.Arg(0)
 	}
 
+	sp := cliui.NewSpinner(os.Stdout)
+	sp.Start("Loading configuration")
+
 	settings, err := config.Load(config.Options{})
 	if err != nil {
+		sp.Fail("Loading configuration")
 		return err
 	}
+	sp.Success("Loaded configuration")
 
 	if settings.Database.DSN == "" {
 		return fmt.Errorf("GOKIL_DB_DSN is required for makemigrations")
 	}
 
+	sp.Start("Connecting to database")
 	db, err := orm.Connect(
 		settings.Database.Driver,
 		settings.Database.DSN,
@@ -149,9 +159,11 @@ func makemigrations(args []string) error {
 		settings.Database.MaxIdleConns,
 	)
 	if err != nil {
+		sp.Fail("Connecting to database")
 		return err
 	}
 	defer db.Close()
+	sp.Success("Connected to database")
 
 	loadProjectModels()
 
@@ -159,24 +171,28 @@ func makemigrations(args []string) error {
 		return fmt.Errorf("no models registered — run from your project: go run ./cmd/<project> makemigrations")
 	}
 
+	sp.Start("Detecting schema changes")
 	detector := migration.Detector{DB: db.DB}
 	diff, err := detector.Detect()
 	if err != nil {
+		sp.Fail("Detecting schema changes")
 		return err
 	}
+	sp.Success("Detected schema changes")
 
 	if !migration.HasChanges(diff) {
-		fmt.Println("No changes detected")
+		cliui.Infof("No changes detected")
 		return nil
 	}
 
+	sp.Start("Generating migration files")
 	gen := migration.Generator{Dir: settings.Database.MigrationsDir}
 	path, err := gen.GenerateFromDiff(diff, name)
 	if err != nil {
+		sp.Fail("Generating migration files")
 		return err
 	}
-
-	fmt.Printf("Created migration: %s\n", path)
+	sp.Success(fmt.Sprintf("Created migration: %s", path))
 	return nil
 }
 
@@ -185,15 +201,21 @@ func migrateCmd(args []string) error {
 	rollback := flags.Bool("rollback", false, "rollback last migration")
 	_ = flags.Parse(args)
 
+	sp := cliui.NewSpinner(os.Stdout)
+	sp.Start("Loading configuration")
+
 	settings, err := config.Load(config.Options{})
 	if err != nil {
+		sp.Fail("Loading configuration")
 		return err
 	}
+	sp.Success("Loaded configuration")
 
 	if settings.Database.DSN == "" {
 		return fmt.Errorf("GOKIL_DB_DSN is required for migrate")
 	}
 
+	sp.Start("Connecting to database")
 	db, err := orm.Connect(
 		settings.Database.Driver,
 		settings.Database.DSN,
@@ -201,9 +223,11 @@ func migrateCmd(args []string) error {
 		settings.Database.MaxIdleConns,
 	)
 	if err != nil {
+		sp.Fail("Connecting to database")
 		return err
 	}
 	defer db.Close()
+	sp.Success("Connected to database")
 
 	runner := migration.Runner{
 		DB:  db.DB,
@@ -211,34 +235,47 @@ func migrateCmd(args []string) error {
 	}
 
 	if *rollback {
+		sp.Start("Rolling back last migration")
 		if err := runner.Rollback(); err != nil {
+			sp.Fail("Rolling back last migration")
 			return err
 		}
-		fmt.Println("Rolled back last migration")
+		sp.Success("Rolled back last migration")
 		return nil
 	}
 
+	sp.Start("Applying migrations")
 	count, err := runner.Migrate()
 	if err != nil {
+		sp.Fail("Applying migrations")
 		return err
 	}
-	fmt.Printf("Applied %d migration(s)\n", count)
+	if count == 0 {
+		sp.Success("No pending migrations")
+		return nil
+	}
+	sp.Success(fmt.Sprintf("Applied %d migration(s)", count))
 	return nil
 }
 
 func doctor() error {
+	sp := cliui.NewSpinner(os.Stdout)
+	sp.Start("Loading configuration")
+
 	settings, err := config.Load(config.Options{})
 	if err != nil {
+		sp.Fail("Loading configuration")
 		return err
 	}
 
 	if err := settings.Validate(); err != nil {
+		sp.Fail("Validating settings")
 		return err
 	}
-
-	fmt.Println("Settings: OK")
+	sp.Success("Settings validated")
 
 	if settings.Database.DSN != "" {
+		sp.Start("Checking database connection")
 		db, err := orm.Connect(
 			settings.Database.Driver,
 			settings.Database.DSN,
@@ -246,14 +283,16 @@ func doctor() error {
 			settings.Database.MaxIdleConns,
 		)
 		if err != nil {
+			sp.Fail("Checking database connection")
 			return fmt.Errorf("database: %w", err)
 		}
 		defer db.Close()
-		fmt.Println("Database: OK")
+		sp.Success("Database connection OK")
 	} else {
-		fmt.Println("Database: skipped (GOKIL_DB_DSN not set)")
+		cliui.Warnf("Database skipped (GOKIL_DB_DSN not set)")
 	}
 
+	sp.Start("Checking storage")
 	provider := settings.Storage.Provider
 	if provider == "local" {
 		path := settings.Storage.LocalPath
@@ -261,11 +300,12 @@ func doctor() error {
 			path = "storage"
 		}
 		if err := os.MkdirAll(path, 0o755); err != nil {
+			sp.Fail("Checking storage")
 			return fmt.Errorf("storage: %w", err)
 		}
-		fmt.Printf("Storage (local): OK (%s)\n", path)
+		sp.Success(fmt.Sprintf("Storage ready (%s)", path))
 	} else {
-		fmt.Printf("Storage (%s): configured\n", provider)
+		sp.Success(fmt.Sprintf("Storage configured (%s)", provider))
 	}
 
 	return nil
@@ -279,10 +319,10 @@ func loadProjectModels() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, `Usage: gokil <command> [options]
-
-Commands:
-  startproject <name>   Create a new project
+	fmt.Fprintln(os.Stderr, cliui.Bold("Usage: gokil <command> [options]"))
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, cliui.Cyan("Commands:"))
+	fmt.Fprintln(os.Stderr, `  startproject <name>   Create a new project
                           --db / --no-db
                           --db-engine postgres|mysql
                           --redis / --no-redis

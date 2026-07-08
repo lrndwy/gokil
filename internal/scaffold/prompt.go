@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/lrndwy/gokil/cliui"
 )
 
 func IsInteractive() bool {
@@ -30,7 +32,9 @@ func PromptInfraOptions(projectName string, preset *InfraOptions) InfraOptions {
 
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Println()
-	fmt.Println("Infrastructure setup")
+	fmt.Println(cliui.Bold("Infrastructure setup"))
+	fmt.Println(cliui.Dim("Configure Docker Compose services for your new project."))
+	fmt.Println()
 
 	opts := InfraOptions{}
 	opts.SetupDatabase = askYesNo(reader, "Setup database with Docker Compose?", false)
@@ -71,7 +75,7 @@ func askYesNo(reader *bufio.Reader, prompt string, defaultYes bool) bool {
 }
 
 func askDatabase(reader *bufio.Reader) string {
-	fmt.Println("Choose database engine:")
+	fmt.Println(cliui.Cyan("Choose database engine:"))
 	fmt.Println("  1) PostgreSQL (recommended)")
 	fmt.Println("  2) MySQL")
 	for {

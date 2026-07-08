@@ -1,6 +1,9 @@
 package main
 
-import "github.com/lrndwy/gokil/version"
+import (
+	"github.com/lrndwy/gokil/cliui"
+	"github.com/lrndwy/gokil/version"
+)
 
 // Override at build time via -ldflags (optional).
 var (
@@ -22,5 +25,5 @@ func printVersion() {
 		info.Date = Date
 	}
 
-	println(info.String())
+	println(cliui.Cyan("gokil") + " " + info.String())
 }
