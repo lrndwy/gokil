@@ -24,9 +24,7 @@ func TagCreate(ctx *views.Context) error {
 	if err := views.Required("name", input.Name); err != nil {
 		return err
 	}
-	return views.CreateAndRespond(ctx, "tag", func(db context.Context) (*models.Tag, error) {
-		return orm.Create(db, &models.Tag{Name: input.Name})
-	})
+	return views.Create(ctx, "tag", &models.Tag{Name: input.Name})
 }
 
 func TagDetail(ctx *views.Context) error {

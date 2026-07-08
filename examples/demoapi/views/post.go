@@ -38,12 +38,10 @@ func PostCreate(ctx *views.Context) error {
 	}); err != nil {
 		return err
 	}
-	return views.CreateAndRespond(ctx, "post", func(db context.Context) (*models.Post, error) {
-		return orm.Create(db, &models.Post{
-			Title:   input.Title,
-			Content: input.Content,
-			Author:  orm.BelongsTo[models.User]{ID: input.AuthorID},
-		})
+	return views.Create(ctx, "post", &models.Post{
+		Title:   input.Title,
+		Content: input.Content,
+		Author:  orm.BelongsTo[models.User]{ID: input.AuthorID},
 	})
 }
 

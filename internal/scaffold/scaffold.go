@@ -60,6 +60,7 @@ func Create(opts Options) error {
 		"go.mod":              goModTemplate,
 		"settings.go":         settingsTemplate,
 		"models/models.go":    modelsTemplate,
+		"jobs/cron.go":        cronJobsTemplate,
 		"urls.go":             urlsTemplate,
 		"views/post.go":       viewsPostTemplate,
 		"views/user.go":       viewsUserTemplate,
@@ -281,12 +282,7 @@ func UserCreate(ctx *views.Context) error {
 	}); err != nil {
 		return err
 	}
-	return views.CreateAndRespond(ctx, "user", func(db context.Context) (*models.User, error) {
-		return orm.Create(db, &models.User{
-			Email: input.Email,
-			Name:  input.Name,
-		})
-	})
+	return views.Create(ctx, "user", &models.User{Email: input.Email, Name: input.Name})
 }
 
 func UserDetail(ctx *views.Context) error {
@@ -358,12 +354,10 @@ func PostCreate(ctx *views.Context) error {
 	}); err != nil {
 		return err
 	}
-	return views.CreateAndRespond(ctx, "post", func(db context.Context) (*models.Post, error) {
-		return orm.Create(db, &models.Post{
-			Title:   input.Title,
-			Content: input.Content,
-			Author:  orm.BelongsTo[models.User]{ID: input.AuthorID},
-		})
+	return views.Create(ctx, "post", &models.Post{
+		Title:   input.Title,
+		Content: input.Content,
+		Author:  orm.BelongsTo[models.User]{ID: input.AuthorID},
 	})
 }
 
@@ -431,9 +425,7 @@ func TagCreate(ctx *views.Context) error {
 	if err := views.Required("name", input.Name); err != nil {
 		return err
 	}
-	return views.CreateAndRespond(ctx, "tag", func(db context.Context) (*models.Tag, error) {
-		return orm.Create(db, &models.Tag{Name: input.Name})
-	})
+	return views.Create(ctx, "tag", &models.Tag{Name: input.Name})
 }
 
 func TagDetail(ctx *views.Context) error {
@@ -469,7 +461,9 @@ import (
 	"os"
 
 	"{{.ModPath}}"
+	"{{.ModPath}}/jobs"
 	_ "{{.ModPath}}/models"
+	"github.com/lrndwy/gokil/cron"
 	"github.com/lrndwy/gokil/cliui"
 	"github.com/lrndwy/gokil/framework"
 	"github.com/lrndwy/gokil/migration"
@@ -484,6 +478,10 @@ func main() {
 	switch os.Args[1] {
 	case "serve":
 		if err := runServe(); err != nil {
+			log.Fatal(err)
+		}
+	case "cron":
+		if err := runCron(); err != nil {
 			log.Fatal(err)
 		}
 	case "doctor":
@@ -516,6 +514,30 @@ func runServe() error {
 
 	{{.Name}}.URLPatterns(app, app.Router)
 	return app.Run(context.Background())
+}
+
+func runCron() error {
+	settings, err := {{.Name}}.LoadSettings()
+	if err != nil {
+		return err
+	}
+	if settings.Database.DSN == "" {
+		return fmt.Errorf("GOKIL_DB_DSN is required")
+	}
+
+	sp := cliui.NewSpinner(os.Stdout)
+	sp.Start("Connecting to database")
+	db, err := orm.Connect(settings.Database.Driver, settings.Database.DSN, settings.Database.MaxOpenConns, settings.Database.MaxIdleConns)
+	if err != nil {
+		sp.Fail("Connecting to database")
+		return err
+	}
+	defer db.Close()
+	sp.Success("Connected to database")
+
+	cliui.Infof("Cron started (Ctrl+C to stop)")
+	ctx := orm.WithDB(context.Background(), db)
+	return cron.Run(ctx, jobs.CronJobs()...)
 }
 
 func runDoctor() error {
@@ -631,6 +653,34 @@ func runMigrate(args []string) error {
 	}
 	sp.Success(fmt.Sprintf("Applied %d migration(s)", count))
 	return nil
+}
+`
+
+const cronJobsTemplate = `package jobs
+
+import (
+	"context"
+	"time"
+
+	"github.com/lrndwy/gokil/cron"
+)
+
+// CronJobs is the simplest way to define background jobs.
+//
+// Jobs run forever until the process is stopped.
+func CronJobs() []cron.Job {
+	return []cron.Job{
+		{
+			Name:       "hello",
+			Every:      1 * time.Minute,
+			RunOnStart: true,
+			Run: func(ctx context.Context) error {
+				// TODO: write your job here
+				_ = ctx
+				return nil
+			},
+		},
+	}
 }
 `
 

@@ -33,12 +33,7 @@ func UserCreate(ctx *views.Context) error {
 	}); err != nil {
 		return err
 	}
-	return views.CreateAndRespond(ctx, "user", func(db context.Context) (*models.User, error) {
-		return orm.Create(db, &models.User{
-			Email: input.Email,
-			Name:  input.Name,
-		})
-	})
+	return views.Create(ctx, "user", &models.User{Email: input.Email, Name: input.Name})
 }
 
 func UserDetail(ctx *views.Context) error {

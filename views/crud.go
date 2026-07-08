@@ -1,6 +1,10 @@
 package views
 
-import "context"
+import (
+	"context"
+
+	"github.com/lrndwy/gokil/orm"
+)
 
 // DetailByID loads one record by route param and writes "<resource> retrieved".
 func DetailByID[T any](c *Context, param, resource, notFound string) error {
@@ -36,6 +40,19 @@ func CreateAndRespond[T any](c *Context, resource string, create func(context.Co
 		return err
 	}
 	return c.ResourceCreated(resource, obj)
+}
+
+// Create creates a record using orm.Create and writes "<resource> created".
+//
+// This helper exists to avoid boilerplate closures in handlers:
+//
+//	return views.Create(ctx, "user", &models.User{Email: input.Email, Name: input.Name})
+func Create[T any](c *Context, resource string, obj *T) error {
+	created, err := orm.Create(c.DBContext(), obj)
+	if err != nil {
+		return err
+	}
+	return c.ResourceCreated(resource, created)
 }
 
 // DetailByQuery loads one record using a custom queryset and writes "<resource> retrieved".
