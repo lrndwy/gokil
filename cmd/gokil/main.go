@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -26,6 +27,14 @@ func main() {
 	switch os.Args[1] {
 	case "startproject":
 		if err := startproject(os.Args[2:]); err != nil {
+			log.Fatal(err)
+		}
+	case "compose":
+		if err := composeCmd(os.Args[2:]); err != nil {
+			log.Fatal(err)
+		}
+	case "build":
+		if err := buildCmd(os.Args[2:]); err != nil {
 			log.Fatal(err)
 		}
 	case "serve":
@@ -318,6 +327,153 @@ func loadProjectModels() {
 	_ = filepath.Clean(".")
 }
 
+func detectProjectName(projectFlag string) (string, error) {
+	if strings.TrimSpace(projectFlag) != "" {
+		return strings.TrimSpace(projectFlag), nil
+	}
+
+	entries, err := os.ReadDir("cmd")
+	if err != nil {
+		return "", fmt.Errorf("cannot detect project: missing cmd/ directory (run from project root or pass --project)")
+	}
+
+	var candidates []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		mainPath := filepath.Join("cmd", name, "main.go")
+		if _, err := os.Stat(mainPath); err == nil {
+			candidates = append(candidates, name)
+		}
+	}
+
+	if len(candidates) == 1 {
+		return candidates[0], nil
+	}
+	if len(candidates) == 0 {
+		return "", fmt.Errorf("cannot detect project: no cmd/<project>/main.go found (pass --project)")
+	}
+	return "", fmt.Errorf("cannot detect project: multiple cmd/<project> found (%s) — pass --project", strings.Join(candidates, ", "))
+}
+
+func composeCmd(args []string) error {
+	flags := flag.NewFlagSet("compose", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	project := flags.String("project", "", "project name (cmd/<project>)")
+	out := flags.String("out", "docker-compose.yml", "output compose path")
+	service := flags.String("service", "gokil", "app service name")
+	update := flags.Bool("update", true, "update existing compose if present")
+	onlyApp := flags.Bool("only-app", false, "generate compose containing only the app service")
+	_ = flags.Parse(args)
+
+	p, err := detectProjectName(*project)
+	if err != nil {
+		return err
+	}
+
+	// Ensure Dockerfile exists (generate if missing).
+	if _, err := os.Stat("Dockerfile"); err != nil {
+		df, err := scaffold.RenderDockerfile(scaffold.TemplateData{Name: p})
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile("Dockerfile", []byte(df), 0o644); err != nil {
+			return err
+		}
+		cliui.Successf("Created Dockerfile")
+	}
+
+	dependsOn := make([]string, 0, 2)
+	// If user already has infra compose, we'll auto-depend on db/redis if present.
+	if existing, err := os.ReadFile(*out); err == nil {
+		s := string(existing)
+		if strings.Contains(s, "\n  db:\n") || strings.HasPrefix(s, "services:\n  db:\n") {
+			dependsOn = append(dependsOn, "db")
+		}
+		if strings.Contains(s, "\n  redis:\n") || strings.HasPrefix(s, "services:\n  redis:\n") {
+			dependsOn = append(dependsOn, "redis")
+		}
+	}
+
+	appCompose, err := scaffold.RenderDockerComposeApp(p, scaffold.ComposeAppOptions{ServiceName: *service}, dependsOn)
+	if err != nil {
+		return err
+	}
+
+	if *onlyApp {
+		if err := os.WriteFile(*out, []byte(appCompose), 0o644); err != nil {
+			return err
+		}
+		cliui.Successf("Wrote %s", *out)
+		return nil
+	}
+
+	// Update or create compose.
+	if existing, err := os.ReadFile(*out); err == nil {
+		if !*update {
+			return fmt.Errorf("%s already exists (use --update or choose another --out)", *out)
+		}
+		merged, err := scaffold.MergeComposeServices(string(existing), *service, appCompose)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(*out, []byte(merged), 0o644); err != nil {
+			return err
+		}
+		cliui.Successf("Updated %s (added service %q)", *out, *service)
+		return nil
+	}
+
+	if err := os.WriteFile(*out, []byte(appCompose), 0o644); err != nil {
+		return err
+	}
+	cliui.Successf("Created %s", *out)
+	return nil
+}
+
+func buildCmd(args []string) error {
+	flags := flag.NewFlagSet("build", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	project := flags.String("project", "", "project name (cmd/<project>)")
+	out := flags.String("o", "", "output binary path (default: ./bin/<project>)")
+	goos := flags.String("os", "", "GOOS (optional)")
+	goarch := flags.String("arch", "", "GOARCH (optional)")
+	_ = flags.Parse(args)
+
+	p, err := detectProjectName(*project)
+	if err != nil {
+		return err
+	}
+
+	output := *out
+	if strings.TrimSpace(output) == "" {
+		output = filepath.Join("bin", p)
+	}
+	if err := os.MkdirAll(filepath.Dir(output), 0o755); err != nil {
+		return err
+	}
+
+	cmd := exec.Command("go", "build", "-o", output, "./cmd/"+p)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Env = os.Environ()
+	if *goos != "" {
+		cmd.Env = append(cmd.Env, "GOOS="+*goos)
+	}
+	if *goarch != "" {
+		cmd.Env = append(cmd.Env, "GOARCH="+*goarch)
+	}
+
+	cliui.Infof("Building %s -> %s", p, output)
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+	cliui.Successf("Build OK: %s", output)
+	return nil
+}
+
 func usage() {
 	fmt.Fprintln(os.Stderr, cliui.Bold("Usage: gokil <command> [options]"))
 	fmt.Fprintln(os.Stderr)
@@ -326,6 +482,8 @@ func usage() {
                           --db / --no-db
                           --db-engine postgres|mysql
                           --redis / --no-redis
+  compose              Generate/update docker-compose.yml with gokil service
+  build                Compile project binary (from project root)
   makemigrations [name] Generate migration files from models
   migrate               Apply pending migrations
   migrate --rollback    Rollback last migration

@@ -48,6 +48,8 @@ myapi/
 ```bash
 go install github.com/lrndwy/gokil/cmd/gokil@latest
 gokil startproject <name>   # Buat project baru
+gokil compose               # Generate/update docker-compose.yml + Dockerfile (di project)
+gokil build                 # Compile project jadi ./bin/<project>
 gokil doctor                # Validasi konfigurasi (dari project)
 gokil version
 ```

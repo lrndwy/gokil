@@ -23,6 +23,15 @@ Lalu jalankan server:
 go run ./cmd/<project> serve
 ```
 
+### Generate Dockerfile + service app (dev)
+
+Kalau kamu ingin menjalankan aplikasinya juga lewat Docker Compose (ada service `gokil`/`api`), kamu bisa generate/patch compose:
+
+```bash
+gokil compose
+docker compose up -d --build
+```
+
 ### Production (ringkas)
 
 Rekomendasi minimal:
