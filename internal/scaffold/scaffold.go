@@ -263,9 +263,7 @@ func HealthCheck(ctx *views.Context) error {
 }
 
 func UserList(ctx *views.Context) error {
-	return views.ListRespond(ctx, "users retrieved", func(db context.Context) ([]*models.User, error) {
-		return orm.Objects[models.User](db).All()
-	})
+	return views.List(ctx, "users retrieved", orm.Objects[models.User](ctx.DBContext()))
 }
 
 func UserCreate(ctx *views.Context) error {
@@ -335,9 +333,9 @@ func getPost(ctx *views.Context, id string) (*models.Post, error) {
 }
 
 func PostList(ctx *views.Context) error {
-	return views.ListRespond(ctx, "posts retrieved", func(db context.Context) ([]*models.Post, error) {
-		return orm.Objects[models.Post](db).SelectRelated("Author").All()
-	})
+	return views.List(ctx, "posts retrieved",
+		orm.Objects[models.Post](ctx.DBContext()).SelectRelated("Author"),
+	)
 }
 
 func PostCreate(ctx *views.Context) error {
@@ -410,9 +408,7 @@ import (
 )
 
 func TagList(ctx *views.Context) error {
-	return views.ListRespond(ctx, "tags retrieved", func(db context.Context) ([]*models.Tag, error) {
-		return orm.Objects[models.Tag](db).All()
-	})
+	return views.List(ctx, "tags retrieved", orm.Objects[models.Tag](ctx.DBContext()))
 }
 
 func TagCreate(ctx *views.Context) error {

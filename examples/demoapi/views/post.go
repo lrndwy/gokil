@@ -19,9 +19,9 @@ func getPost(ctx *views.Context, id string) (*models.Post, error) {
 }
 
 func PostList(ctx *views.Context) error {
-	return views.ListRespond(ctx, "posts retrieved", func(db context.Context) ([]*models.Post, error) {
-		return orm.Objects[models.Post](db).SelectRelated("Author").All()
-	})
+	return views.List(ctx, "posts retrieved",
+		orm.Objects[models.Post](ctx.DBContext()).SelectRelated("Author"),
+	)
 }
 
 func PostCreate(ctx *views.Context) error {

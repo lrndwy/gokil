@@ -6,6 +6,35 @@ import (
 	"github.com/lrndwy/gokil/orm"
 )
 
+// List runs qs.All() and writes the standard success envelope.
+//
+// Example:
+//   return views.List(ctx, "tags retrieved", orm.Objects[models.Tag](ctx.DBContext()))
+func List[T any](c *Context, message string, qs *orm.QuerySet[T]) error {
+	items, err := qs.All()
+	if err != nil {
+		return err
+	}
+	if items == nil {
+		items = make([]*T, 0)
+	}
+	return c.OK(message, items)
+}
+
+// Detail runs qs.Get(), maps sql.ErrNoRows to notFound, and writes "<resource> retrieved".
+//
+// Example:
+//   return views.Detail(ctx, "post", "post not found",
+//       orm.Objects[models.Post](ctx.DBContext()).SelectRelated("Author").Filter("id", ctx.Param("id")),
+//   )
+func Detail[T any](c *Context, resource, notFound string, qs *orm.QuerySet[T]) error {
+	obj, err := qs.Get()
+	if err := NotFoundIf(err, notFound); err != nil {
+		return err
+	}
+	return c.ResourceOK("retrieved", resource, obj)
+}
+
 // FetchByID loads one record by id and maps sql.ErrNoRows to notFound.
 func FetchByID[T any](c *Context, id any, notFound string) (*T, error) {
 	obj, err := orm.GetByID[T](c.DBContext(), id)

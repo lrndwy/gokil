@@ -9,9 +9,7 @@ import (
 )
 
 func TagList(ctx *views.Context) error {
-	return views.ListRespond(ctx, "tags retrieved", func(db context.Context) ([]*models.Tag, error) {
-		return orm.Objects[models.Tag](db).All()
-	})
+	return views.List(ctx, "tags retrieved", orm.Objects[models.Tag](ctx.DBContext()))
 }
 
 func TagCreate(ctx *views.Context) error {

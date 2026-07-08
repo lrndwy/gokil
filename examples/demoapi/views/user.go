@@ -14,9 +14,7 @@ func HealthCheck(ctx *views.Context) error {
 }
 
 func UserList(ctx *views.Context) error {
-	return views.ListRespond(ctx, "users retrieved", func(db context.Context) ([]*models.User, error) {
-		return orm.Objects[models.User](db).All()
-	})
+	return views.List(ctx, "users retrieved", orm.Objects[models.User](ctx.DBContext()))
 }
 
 func UserCreate(ctx *views.Context) error {
