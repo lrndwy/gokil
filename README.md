@@ -68,4 +68,4 @@ go run ./cmd/myapi migrate --rollback
 - PostgreSQL 14+
 
 
-By Hafi
+Developed by Hafiz.
