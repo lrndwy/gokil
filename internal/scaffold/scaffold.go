@@ -263,9 +263,39 @@ func HealthCheck(ctx *views.Context) error {
 }
 
 func UserList(ctx *views.Context) error {
-	return views.List(ctx, "users retrieved",
-		orm.Objects[models.User](ctx.DBContext()).PrefetchRelated("Posts"),
-	)
+	items, err := orm.Objects[models.User](ctx.DBContext()).
+		PrefetchRelated("Posts").All()
+	if err != nil {
+		return err
+	}
+	if items == nil {
+		items = make([]*models.User, 0)
+	}
+	type userResponse struct {
+		ID        int64            ` + "`" + `json:"id"` + "`" + `
+		Email     string           ` + "`" + `json:"email"` + "`" + `
+		Name      string           ` + "`" + `json:"name"` + "`" + `
+		CreatedAt string           ` + "`" + `json:"created_at"` + "`" + `
+		UpdatedAt string           ` + "`" + `json:"updated_at"` + "`" + `
+		Posts     []postReference  ` + "`" + `json:"posts"` + "`" + `
+	}
+	type postReference struct {
+		ID int64 ` + "`" + `json:"id"` + "`" + `
+	}
+	resp := make([]userResponse, len(items))
+	for i, u := range items {
+		posts := make([]postReference, 0)
+		for _, p := range u.Posts.Items {
+			posts = append(posts, postReference{ID: p.ID})
+		}
+		resp[i] = userResponse{
+			ID: u.ID, Email: u.Email, Name: u.Name,
+			CreatedAt: u.CreatedAt.Format("2006-01-02T15:04:05Z"),
+			UpdatedAt: u.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+			Posts:     posts,
+		}
+	}
+	return ctx.OK("users retrieved", resp)
 }
 
 func UserCreate(ctx *views.Context) error {
@@ -282,15 +312,37 @@ func UserCreate(ctx *views.Context) error {
 	}); err != nil {
 		return err
 	}
-	return views.Create(ctx, "user", &models.User{Email: input.Email, Name: input.Name})
+	obj, err := orm.Create(ctx.DBContext(), &models.User{Email: input.Email, Name: input.Name})
+	if err != nil {
+		return err
+	}
+	return ctx.Created("user created", map[string]any{
+		"id":         obj.ID,
+		"email":      obj.Email,
+		"name":       obj.Name,
+		"created_at": obj.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		"updated_at": obj.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+	})
 }
 
 func UserDetail(ctx *views.Context) error {
-	return views.DetailByQuery(ctx, "user", "user not found", func(db context.Context) (*models.User, error) {
-		return orm.Objects[models.User](db).
-			PrefetchRelated("Posts").
-			Filter("id", ctx.Param("id")).
-			Get()
+	obj, err := orm.Objects[models.User](ctx.DBContext()).
+		PrefetchRelated("Posts").
+		Filter("id", ctx.Param("id")).Get()
+	if err != nil {
+		return views.NotFoundIf(err, "user not found")
+	}
+	posts := make([]map[string]any, 0)
+	for _, p := range obj.Posts.Items {
+		posts = append(posts, map[string]any{"id": p.ID})
+	}
+	return ctx.OK("user retrieved", map[string]any{
+		"id":         obj.ID,
+		"email":      obj.Email,
+		"name":       obj.Name,
+		"created_at": obj.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		"updated_at": obj.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+		"posts":      posts,
 	})
 }
 
@@ -308,41 +360,76 @@ func UserUpdate(ctx *views.Context) error {
 	}); err != nil {
 		return err
 	}
-	return views.Update[models.User](ctx, "id", "user", "user not found", map[string]any{
+	obj, err := orm.UpdateByID[models.User](ctx.DBContext(), ctx.Param("id"), map[string]any{
 		"email": input.Email,
 		"name":  input.Name,
+	})
+	if err != nil {
+		return views.NotFoundIf(err, "user not found")
+	}
+	return ctx.OK("user updated", map[string]any{
+		"id":         obj.ID,
+		"email":      obj.Email,
+		"name":       obj.Name,
+		"created_at": obj.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		"updated_at": obj.UpdatedAt.Format("2006-01-02T15:04:05Z"),
 	})
 }
 
 func UserDelete(ctx *views.Context) error {
-	return views.Delete[models.User](ctx, "id", "user", "user not found")
+	obj, err := orm.DeleteByID[models.User](ctx.DBContext(), ctx.Param("id"))
+	if err != nil {
+		return views.NotFoundIf(err, "user not found")
+	}
+	return ctx.OK("user deleted", map[string]any{
+		"id":         obj.ID,
+		"email":      obj.Email,
+		"name":       obj.Name,
+	})
 }
 `
 
 const viewsPostTemplate = `package views
 
 import (
-	"context"
+	"net/http"
 
 	"{{.ModPath}}/models"
 	"github.com/lrndwy/gokil/orm"
 	"github.com/lrndwy/gokil/views"
 )
 
-func getPost(ctx *views.Context, id string) (*models.Post, error) {
-	return views.FetchQuery(ctx, func(db context.Context) (*models.Post, error) {
-		return orm.Objects[models.Post](db).
-			SelectRelated("Author").
-			PrefetchRelated("Tags").
-			Filter("id", id).
-			Get()
-	}, "post not found")
-}
-
 func PostList(ctx *views.Context) error {
-	return views.List(ctx, "posts retrieved",
-		orm.Objects[models.Post](ctx.DBContext()).SelectRelated("Author"),
-	)
+	items, err := orm.Objects[models.Post](ctx.DBContext()).
+		SelectRelated("Author").All()
+	if err != nil {
+		return err
+	}
+	if items == nil {
+		items = make([]*models.Post, 0)
+	}
+	type authorRef struct {
+		ID   int64  ` + "`" + `json:"id"` + "`" + `
+		Name string ` + "`" + `json:"name"` + "`" + `
+	}
+	type postResponse struct {
+		ID        int64     ` + "`" + `json:"id"` + "`" + `
+		Title     string    ` + "`" + `json:"title"` + "`" + `
+		Content   string    ` + "`" + `json:"content"` + "`" + `
+		Author    authorRef ` + "`" + `json:"author"` + "`" + `
+		CreatedAt string    ` + "`" + `json:"created_at"` + "`" + `
+		UpdatedAt string    ` + "`" + `json:"updated_at"` + "`" + `
+	}
+	resp := make([]postResponse, len(items))
+	for i, p := range items {
+		resp[i] = postResponse{
+			ID: p.ID, Title: p.Title, Content: p.Content,
+			Author:    authorRef{ID: p.Author.ID, Name: p.Author.Name},
+			CreatedAt: p.CreatedAt.Format("2006-01-02T15:04:05Z"),
+			UpdatedAt: p.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+		}
+	}
+	return ctx.OK("posts retrieved", resp)
 }
 
 func PostCreate(ctx *views.Context) error {
@@ -373,16 +460,37 @@ func PostCreate(ctx *views.Context) error {
 			return err
 		}
 	}
-	return ctx.ResourceCreated("post", post)
+	return ctx.Created("post created", map[string]any{
+		"id":         post.ID,
+		"title":      post.Title,
+		"content":    post.Content,
+		"author_id":  input.AuthorID,
+		"tag_ids":    input.TagIDs,
+		"created_at": post.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		"updated_at": post.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+	})
 }
 
 func PostDetail(ctx *views.Context) error {
-	return views.DetailByQuery(ctx, "post", "post not found", func(db context.Context) (*models.Post, error) {
-		return orm.Objects[models.Post](db).
-			SelectRelated("Author").
-			PrefetchRelated("Tags").
-			Filter("id", ctx.Param("id")).
-			Get()
+	p, err := orm.Objects[models.Post](ctx.DBContext()).
+		SelectRelated("Author").
+		PrefetchRelated("Tags").
+		Filter("id", ctx.Param("id")).Get()
+	if err != nil {
+		return views.NotFoundIf(err, "post not found")
+	}
+	tagIDs := make([]int64, 0)
+	for _, t := range p.Tags.Items {
+		tagIDs = append(tagIDs, t.ID)
+	}
+	return ctx.OK("post retrieved", map[string]any{
+		"id":         p.ID,
+		"title":      p.Title,
+		"content":    p.Content,
+		"author":     map[string]any{"id": p.Author.ID, "name": p.Author.Name},
+		"tag_ids":    tagIDs,
+		"created_at": p.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		"updated_at": p.UpdatedAt.Format("2006-01-02T15:04:05Z"),
 	})
 }
 
@@ -401,27 +509,39 @@ func PostUpdate(ctx *views.Context) error {
 	}); err != nil {
 		return err
 	}
-	if _, err := views.UpdateByIDParam[models.Post](ctx, "id", map[string]any{
+	post, err := orm.UpdateByID[models.Post](ctx.DBContext(), ctx.Param("id"), map[string]any{
 		"title":     input.Title,
 		"content":   input.Content,
 		"author_id": input.AuthorID,
-	}, "post not found"); err != nil {
-		return err
-	}
-	post, err := getPost(ctx, ctx.Param("id"))
+	})
 	if err != nil {
-		return err
+		return views.NotFoundIf(err, "post not found")
 	}
 	if input.TagIDs != nil {
 		if err := orm.SetM2M(ctx.DBContext(), post, "Tags", input.TagIDs...); err != nil {
 			return err
 		}
 	}
-	return ctx.ResourceOK("updated", "post", post)
+	return ctx.OK("post updated", map[string]any{
+		"id":         post.ID,
+		"title":      post.Title,
+		"content":    post.Content,
+		"author_id":  input.AuthorID,
+		"tag_ids":    input.TagIDs,
+		"created_at": post.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		"updated_at": post.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+	})
 }
 
 func PostDelete(ctx *views.Context) error {
-	return views.Delete[models.Post](ctx, "id", "post", "post not found")
+	obj, err := orm.DeleteByID[models.Post](ctx.DBContext(), ctx.Param("id"))
+	if err != nil {
+		return views.NotFoundIf(err, "post not found")
+	}
+	return ctx.OK("post deleted", map[string]any{
+		"id":    obj.ID,
+		"title": obj.Title,
+	})
 }
 `
 
@@ -434,7 +554,22 @@ import (
 )
 
 func TagList(ctx *views.Context) error {
-	return views.List(ctx, "tags retrieved", orm.Objects[models.Tag](ctx.DBContext()))
+	items, err := orm.Objects[models.Tag](ctx.DBContext()).All()
+	if err != nil {
+		return err
+	}
+	if items == nil {
+		items = make([]*models.Tag, 0)
+	}
+	type tagResponse struct {
+		ID   int64  ` + "`" + `json:"id"` + "`" + `
+		Name string ` + "`" + `json:"name"` + "`" + `
+	}
+	resp := make([]tagResponse, len(items))
+	for i, t := range items {
+		resp[i] = tagResponse{ID: t.ID, Name: t.Name}
+	}
+	return ctx.OK("tags retrieved", resp)
 }
 
 func TagCreate(ctx *views.Context) error {
@@ -447,11 +582,25 @@ func TagCreate(ctx *views.Context) error {
 	if err := views.Required("name", input.Name); err != nil {
 		return err
 	}
-	return views.Create(ctx, "tag", &models.Tag{Name: input.Name})
+	obj, err := orm.Create(ctx.DBContext(), &models.Tag{Name: input.Name})
+	if err != nil {
+		return err
+	}
+	return ctx.Created("tag created", map[string]any{
+		"id":   obj.ID,
+		"name": obj.Name,
+	})
 }
 
 func TagDetail(ctx *views.Context) error {
-	return views.DetailByID[models.Tag](ctx, "id", "tag", "tag not found")
+	obj, err := orm.GetByID[models.Tag](ctx.DBContext(), ctx.Param("id"))
+	if err != nil {
+		return views.NotFoundIf(err, "tag not found")
+	}
+	return ctx.OK("tag retrieved", map[string]any{
+		"id":   obj.ID,
+		"name": obj.Name,
+	})
 }
 
 func TagUpdate(ctx *views.Context) error {
@@ -464,13 +613,27 @@ func TagUpdate(ctx *views.Context) error {
 	if err := views.Required("name", input.Name); err != nil {
 		return err
 	}
-	return views.Update[models.Tag](ctx, "id", "tag", "tag not found", map[string]any{
+	obj, err := orm.UpdateByID[models.Tag](ctx.DBContext(), ctx.Param("id"), map[string]any{
 		"name": input.Name,
+	})
+	if err != nil {
+		return views.NotFoundIf(err, "tag not found")
+	}
+	return ctx.OK("tag updated", map[string]any{
+		"id":   obj.ID,
+		"name": obj.Name,
 	})
 }
 
 func TagDelete(ctx *views.Context) error {
-	return views.Delete[models.Tag](ctx, "id", "tag", "tag not found")
+	obj, err := orm.DeleteByID[models.Tag](ctx.DBContext(), ctx.Param("id"))
+	if err != nil {
+		return views.NotFoundIf(err, "tag not found")
+	}
+	return ctx.OK("tag deleted", map[string]any{
+		"id":   obj.ID,
+		"name": obj.Name,
+	})
 }
 `
 
