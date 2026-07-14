@@ -14,6 +14,7 @@ import (
 	"github.com/lrndwy/gokil/internal/scaffold"
 	"github.com/lrndwy/gokil/migration"
 	"github.com/lrndwy/gokil/orm"
+	"github.com/lrndwy/gokil/postman"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -45,6 +46,10 @@ func main() {
 		}
 	case "migrate":
 		if err := migrateCmd(os.Args[2:]); err != nil {
+			log.Fatal(err)
+		}
+	case "postman":
+		if err := postmanCmd(os.Args[2:]); err != nil {
 			log.Fatal(err)
 		}
 	case "doctor":
@@ -474,6 +479,49 @@ func buildCmd(args []string) error {
 	return nil
 }
 
+func postmanCmd(args []string) error {
+	flags := flag.NewFlagSet("postman", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	project := flags.String("project", "", "project name (cmd/<project>)")
+	out := flags.String("output", "collection_postman.json", "output file path")
+	baseURL := flags.String("base-url", "http://localhost:8080", "base URL for API requests")
+	_ = flags.Parse(args)
+
+	p, err := detectProjectName(*project)
+	if err != nil {
+		return err
+	}
+
+	sp := cliui.NewSpinner(os.Stdout)
+	sp.Start("Parsing source files")
+
+	routes, err := postman.ParseProject(".")
+	if err != nil {
+		sp.Fail("Parsing source files")
+		return err
+	}
+	sp.Success(fmt.Sprintf("Found %d endpoint(s)", len(routes)))
+
+	if len(routes) == 0 {
+		cliui.Warnf("No routes found in urls.go")
+		return nil
+	}
+
+	sp.Start("Generating Postman collection")
+	collection := postman.Generate(p, routes, *baseURL)
+	sp.Success("Generated Postman collection")
+
+	sp.Start("Writing output file")
+	if err := postman.Write(*out, collection); err != nil {
+		sp.Fail("Writing output file")
+		return err
+	}
+	sp.Success(fmt.Sprintf("Written to %s", *out))
+
+	cliui.Infof("Import the collection into Postman to use it")
+	return nil
+}
+
 func usage() {
 	fmt.Fprintln(os.Stderr, cliui.Bold("Usage: gokil <command> [options]"))
 	fmt.Fprintln(os.Stderr)
@@ -484,6 +532,10 @@ func usage() {
                           --redis / --no-redis
   compose              Generate/update docker-compose.yml with gokil service
   build                Compile project binary (from project root)
+  postman              Generate Postman collection from API endpoints
+                          --project <name>
+                          --output <path>
+                          --base-url <url>
   makemigrations [name] Generate migration files from models
   migrate               Apply pending migrations
   migrate --rollback    Rollback last migration

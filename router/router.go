@@ -69,6 +69,21 @@ func (r *Router) Handler() http.Handler {
 	return h
 }
 
+// RouteInfo is a lightweight representation of a registered route.
+type RouteInfo struct {
+	Method string
+	Path   string
+}
+
+// Routes returns all registered routes.
+func (r *Router) Routes() []RouteInfo {
+	routes := make([]RouteInfo, 0, len(r.routes))
+	for _, route := range r.routes {
+		routes = append(routes, RouteInfo{Method: route.Method, Path: route.Path})
+	}
+	return routes
+}
+
 func (r *Router) Paths() []string {
 	paths := make([]string, 0, len(r.routes))
 	for _, route := range r.routes {
