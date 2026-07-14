@@ -57,8 +57,13 @@ func TestRenderUserTableQuoted(t *testing.T) {
 	if strings.Contains(postSQL, "author_i_d") {
 		t.Fatalf("unexpected broken column name: %s", postSQL)
 	}
-	if !strings.Contains(postSQL, `FOREIGN KEY ("author_id") REFERENCES "user"("id")`) {
-		t.Fatalf("unexpected fk sql: %s", postSQL)
+	if strings.Contains(postSQL, "FOREIGN KEY") {
+		t.Fatalf("FK should not be inline in CREATE TABLE: %s", postSQL)
+	}
+
+	fkSQL := migration.RenderFKConstraint(*postMeta)
+	if !strings.Contains(fkSQL, `FOREIGN KEY ("author_id") REFERENCES "user"("id")`) {
+		t.Fatalf("unexpected fk sql: %s", fkSQL)
 	}
 }
 

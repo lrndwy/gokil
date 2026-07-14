@@ -122,6 +122,12 @@ func RenderDiff(diff *SchemaDiff) (up, down string) {
 		downB.WriteString(fmt.Sprintf("DROP TABLE IF EXISTS %s;\n", quoteIdent(meta.TableName)))
 	}
 
+	for _, meta := range diff.CreateTables {
+		if fk := RenderFKConstraint(meta); fk != "" {
+			upB.WriteString(fk)
+		}
+	}
+
 	for _, alter := range diff.AlterTables {
 		for _, col := range alter.AddCols {
 			upB.WriteString(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s;\n",
@@ -168,6 +174,12 @@ func RenderCreateTable(meta orm.ModelMeta) string {
 		}
 	}
 
+	return b.String()
+}
+
+func RenderFKConstraint(meta orm.ModelMeta) string {
+	table := quoteIdent(meta.TableName)
+	var lines []string
 	for _, f := range meta.Fields {
 		if f.IsRelation && f.Relation.Type == orm.RelationBelongsTo {
 			fkCol := resolveFKColumn(meta, f.Relation.FKColumn)
@@ -176,14 +188,16 @@ func RenderCreateTable(meta orm.ModelMeta) string {
 			}
 			relatedTable := quoteIdent(orm.ToTableName(f.Relation.RelatedModel))
 			constraint := fmt.Sprintf("%s_%s_fk", meta.TableName, fkCol)
-			b.WriteString(fmt.Sprintf(
-				"\nALTER TABLE %s ADD CONSTRAINT %s FOREIGN KEY (%s) REFERENCES %s(%s);",
+			lines = append(lines, fmt.Sprintf(
+				"ALTER TABLE %s ADD CONSTRAINT %s FOREIGN KEY (%s) REFERENCES %s(%s);",
 				table, quoteIdent(constraint), quoteIdent(fkCol), relatedTable, quoteIdent("id"),
 			))
 		}
 	}
-
-	return b.String()
+	if len(lines) == 0 {
+		return ""
+	}
+	return strings.Join(lines, "\n") + "\n"
 }
 
 func RenderColumn(f orm.FieldMeta) string {

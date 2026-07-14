@@ -3,6 +3,7 @@ package orm
 import (
 	"fmt"
 	"reflect"
+	"sort"
 	"sync"
 )
 
@@ -52,6 +53,9 @@ func AllModels() []*ModelMeta {
 	for _, m := range globalRegistry.models {
 		result = append(result, m)
 	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].TableName < result[j].TableName
+	})
 	return result
 }
 
