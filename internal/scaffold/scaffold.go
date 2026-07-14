@@ -347,9 +347,10 @@ func PostList(ctx *views.Context) error {
 
 func PostCreate(ctx *views.Context) error {
 	var input struct {
-		Title    string ` + "`" + `json:"title"` + "`" + `
-		Content  string ` + "`" + `json:"content"` + "`" + `
-		AuthorID int64  ` + "`" + `json:"author_id"` + "`" + `
+		Title    string  ` + "`" + `json:"title"` + "`" + `
+		Content  string  ` + "`" + `json:"content"` + "`" + `
+		AuthorID int64   ` + "`" + `json:"author_id"` + "`" + `
+		TagIDs   []int64 ` + "`" + `json:"tag_ids"` + "`" + `
 	}
 	if err := ctx.MustBindJSON(&input); err != nil {
 		return err
@@ -359,11 +360,20 @@ func PostCreate(ctx *views.Context) error {
 	}); err != nil {
 		return err
 	}
-	return views.Create(ctx, "post", &models.Post{
+	post := &models.Post{
 		Title:   input.Title,
 		Content: input.Content,
 		Author:  orm.BelongsTo[models.User]{ID: input.AuthorID},
-	})
+	}
+	if err := orm.Create(ctx.DBContext(), post); err != nil {
+		return err
+	}
+	if len(input.TagIDs) > 0 {
+		if err := orm.SetM2M(ctx.DBContext(), post, "Tags", input.TagIDs...); err != nil {
+			return err
+		}
+	}
+	return ctx.ResourceCreated("post", post)
 }
 
 func PostDetail(ctx *views.Context) error {
@@ -378,9 +388,10 @@ func PostDetail(ctx *views.Context) error {
 
 func PostUpdate(ctx *views.Context) error {
 	var input struct {
-		Title    string ` + "`" + `json:"title"` + "`" + `
-		Content  string ` + "`" + `json:"content"` + "`" + `
-		AuthorID int64  ` + "`" + `json:"author_id"` + "`" + `
+		Title    string  ` + "`" + `json:"title"` + "`" + `
+		Content  string  ` + "`" + `json:"content"` + "`" + `
+		AuthorID int64   ` + "`" + `json:"author_id"` + "`" + `
+		TagIDs   []int64 ` + "`" + `json:"tag_ids"` + "`" + `
 	}
 	if err := ctx.MustBindJSON(&input); err != nil {
 		return err
@@ -390,13 +401,23 @@ func PostUpdate(ctx *views.Context) error {
 	}); err != nil {
 		return err
 	}
-	return views.UpdateAndRefresh(ctx, "id", "post", "post not found", map[string]any{
+	if err := views.UpdateByIDParam[models.Post](ctx, "id", map[string]any{
 		"title":     input.Title,
 		"content":   input.Content,
 		"author_id": input.AuthorID,
-	}, func(db context.Context, id string) (*models.Post, error) {
-		return getPost(ctx, id)
-	})
+	}, "post not found"); err != nil {
+		return err
+	}
+	post, err := getPost(ctx, ctx.Param("id"))
+	if err != nil {
+		return err
+	}
+	if input.TagIDs != nil {
+		if err := orm.SetM2M(ctx.DBContext(), post, "Tags", input.TagIDs...); err != nil {
+			return err
+		}
+	}
+	return ctx.ResourceOK("updated", "post", post)
 }
 
 func PostDelete(ctx *views.Context) error {
