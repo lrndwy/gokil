@@ -177,7 +177,7 @@ func (qs *QuerySet[T]) Update(values map[string]any) (int64, error) {
 		i++
 	}
 
-	where, whereArgs := qs.buildWhere()
+	where, whereArgs := qs.buildWhereWithOffset(i - 1)
 	for _, a := range whereArgs {
 		args = append(args, a)
 	}
@@ -242,6 +242,10 @@ func (qs *QuerySet[T]) selectColumns() []string {
 }
 
 func (qs *QuerySet[T]) buildWhere() (string, []any) {
+	return qs.buildWhereWithOffset(0)
+}
+
+func (qs *QuerySet[T]) buildWhereWithOffset(offset int) (string, []any) {
 	if len(qs.filters) == 0 {
 		return "", nil
 	}
@@ -258,7 +262,8 @@ func (qs *QuerySet[T]) buildWhere() (string, []any) {
 			col = toColumnName(f.column)
 		}
 
-		clause, val := buildFilterClause(quoteIdent(col), f.operator, f.value, i+1)
+		argIndex := offset + i + 1
+		clause, val := buildFilterClause(quoteIdent(col), f.operator, f.value, argIndex)
 		clauses = append(clauses, clause)
 		if val != nil {
 			if slice, ok := val.([]any); ok {

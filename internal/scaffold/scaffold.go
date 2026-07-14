@@ -250,6 +250,7 @@ func URLPatterns(app *framework.App, r *router.Router) {
 const viewsUserTemplate = `package views
 
 import (
+	"context"
 	"net/http"
 
 	"{{.ModPath}}/models"
@@ -262,7 +263,9 @@ func HealthCheck(ctx *views.Context) error {
 }
 
 func UserList(ctx *views.Context) error {
-	return views.List(ctx, "users retrieved", orm.Objects[models.User](ctx.DBContext()))
+	return views.List(ctx, "users retrieved",
+		orm.Objects[models.User](ctx.DBContext()).PrefetchRelated("Posts"),
+	)
 }
 
 func UserCreate(ctx *views.Context) error {
@@ -283,7 +286,12 @@ func UserCreate(ctx *views.Context) error {
 }
 
 func UserDetail(ctx *views.Context) error {
-	return views.DetailByID[models.User](ctx, "id", "user", "user not found")
+	return views.DetailByQuery(ctx, "user", "user not found", func(db context.Context) (*models.User, error) {
+		return orm.Objects[models.User](db).
+			PrefetchRelated("Posts").
+			Filter("id", ctx.Param("id")).
+			Get()
+	})
 }
 
 func UserUpdate(ctx *views.Context) error {
