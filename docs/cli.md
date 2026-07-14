@@ -63,6 +63,29 @@ gokil build --os linux --arch amd64
 gokil build --project myapi
 ```
 
+### `postman`
+
+Generate Postman Collection v2.1.0 dari source code. Parser otomatis mengekstrak route, request body, path variables, dan query parameters dari `urls.go` dan `views/*.go`.
+
+```bash
+gokil postman
+gokil postman --project myapi
+gokil postman --output collection.json
+gokil postman --base-url http://localhost:8080
+```
+
+Output default: `collection_postman.json` di direktori project.
+
+Opsi:
+
+| Flag | Default | Deskripsi |
+|------|---------|-----------|
+| `--project` | auto-detect | Nama project (`cmd/<project>`) |
+| `--output` | `collection_postman.json` | Path output file |
+| `--base-url` | `http://localhost:8080` | Base URL untuk semua request |
+
+Lihat [Postman Collection](./postman.md) untuk detail lebih lanjut.
+
 ### `makemigrations`
 
 Generate file migrasi dari model.

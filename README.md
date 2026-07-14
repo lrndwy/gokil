@@ -16,6 +16,7 @@ Gokil di desain untuk memudahkan pengembangan API RESTful dengan Go. Mengambil r
 - **ORM penuh** — CRUD, filter, relasi `SelectRelated` / `PrefetchRelated`
 - **Tanpa tabel bawaan** — tidak ada auto-migration untuk user/auth; semua tabel didefinisikan manual di `models.go`
 - **Cron jobs** — cron jobs di `crons/`
+- **Postman collection** — generate collection Postman v2.1.0 dari source code (`gokil postman`)
 
 ## Install
 
@@ -50,6 +51,7 @@ go install github.com/lrndwy/gokil/cmd/gokil@latest
 gokil startproject <name>   # Buat project baru
 gokil compose               # Generate/update docker-compose.yml + Dockerfile (di project)
 gokil build                 # Compile project jadi ./bin/<project>
+gokil postman               # Generate Postman collection dari API endpoints
 gokil doctor                # Validasi konfigurasi (dari project)
 gokil version
 ```
