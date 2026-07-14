@@ -365,7 +365,7 @@ func PostCreate(ctx *views.Context) error {
 		Content: input.Content,
 		Author:  orm.BelongsTo[models.User]{ID: input.AuthorID},
 	}
-	if err := orm.Create(ctx.DBContext(), post); err != nil {
+	if _, err := orm.Create(ctx.DBContext(), post); err != nil {
 		return err
 	}
 	if len(input.TagIDs) > 0 {
@@ -401,7 +401,7 @@ func PostUpdate(ctx *views.Context) error {
 	}); err != nil {
 		return err
 	}
-	if err := views.UpdateByIDParam[models.Post](ctx, "id", map[string]any{
+	if _, err := views.UpdateByIDParam[models.Post](ctx, "id", map[string]any{
 		"title":     input.Title,
 		"content":   input.Content,
 		"author_id": input.AuthorID,
