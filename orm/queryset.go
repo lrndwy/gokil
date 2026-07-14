@@ -120,7 +120,7 @@ func (qs *QuerySet[T]) Count() (int64, error) {
 	}
 
 	where, args := qs.buildWhere()
-	query := fmt.Sprintf("SELECT COUNT(*) FROM %s%s", qs.meta.TableName, where)
+	query := fmt.Sprintf("SELECT COUNT(*) FROM %s%s", quoteIdent(qs.meta.TableName), where)
 	var count int64
 	if err := conn.QueryRowContext(qs.ctx, query, args...).Scan(&count); err != nil {
 		return 0, err
@@ -140,7 +140,7 @@ func (qs *QuerySet[T]) Create(instance *T) (*T, error) {
 	columns, placeholders, values := qs.buildInsert(instance)
 	query := fmt.Sprintf(
 		"INSERT INTO %s (%s) VALUES (%s) RETURNING id",
-		qs.meta.TableName,
+		quoteIdent(qs.meta.TableName),
 		strings.Join(columns, ", "),
 		strings.Join(placeholders, ", "),
 	)
@@ -167,12 +167,12 @@ func (qs *QuerySet[T]) Update(values map[string]any) (int64, error) {
 		if fm, ok := qs.meta.FieldByName[key]; ok {
 			col = fm.Column
 		}
-		sets = append(sets, fmt.Sprintf("%s = $%d", col, i))
+		sets = append(sets, fmt.Sprintf("%s = $%d", quoteIdent(col), i))
 		args = append(args, val)
 		i++
 	}
 	if _, ok := values["UpdatedAt"]; !ok {
-		sets = append(sets, fmt.Sprintf("updated_at = $%d", i))
+		sets = append(sets, fmt.Sprintf("%s = $%d", quoteIdent("updated_at"), i))
 		args = append(args, time.Now().UTC())
 		i++
 	}
@@ -182,7 +182,7 @@ func (qs *QuerySet[T]) Update(values map[string]any) (int64, error) {
 		args = append(args, a)
 	}
 
-	query := fmt.Sprintf("UPDATE %s SET %s%s", qs.meta.TableName, strings.Join(sets, ", "), where)
+	query := fmt.Sprintf("UPDATE %s SET %s%s", quoteIdent(qs.meta.TableName), strings.Join(sets, ", "), where)
 	result, err := conn.ExecContext(qs.ctx, query, args...)
 	if err != nil {
 		return 0, err
@@ -197,7 +197,7 @@ func (qs *QuerySet[T]) Delete() (int64, error) {
 	}
 
 	where, args := qs.buildWhere()
-	query := fmt.Sprintf("DELETE FROM %s%s", qs.meta.TableName, where)
+	query := fmt.Sprintf("DELETE FROM %s%s", quoteIdent(qs.meta.TableName), where)
 	result, err := conn.ExecContext(qs.ctx, query, args...)
 	if err != nil {
 		return 0, err
@@ -208,15 +208,15 @@ func (qs *QuerySet[T]) Delete() (int64, error) {
 func (qs *QuerySet[T]) buildSelect() (string, []any) {
 	cols := qs.selectColumns()
 	where, args := qs.buildWhere()
-	query := fmt.Sprintf("SELECT %s FROM %s%s", strings.Join(cols, ", "), qs.meta.TableName, where)
+	query := fmt.Sprintf("SELECT %s FROM %s%s", strings.Join(cols, ", "), quoteIdent(qs.meta.TableName), where)
 
 	if len(qs.orderBy) > 0 {
 		parts := make([]string, len(qs.orderBy))
 		for i, f := range qs.orderBy {
 			if strings.HasPrefix(f, "-") {
-				parts[i] = toColumnName(strings.TrimPrefix(f, "-")) + " DESC"
+				parts[i] = quoteIdent(toColumnName(strings.TrimPrefix(f, "-"))) + " DESC"
 			} else {
-				parts[i] = toColumnName(f) + " ASC"
+				parts[i] = quoteIdent(toColumnName(f)) + " ASC"
 			}
 		}
 		query += " ORDER BY " + strings.Join(parts, ", ")
@@ -236,7 +236,7 @@ func (qs *QuerySet[T]) selectColumns() []string {
 		if f.IsRelation {
 			continue
 		}
-		cols = append(cols, f.Column)
+		cols = append(cols, quoteIdent(f.Column))
 	}
 	return cols
 }
@@ -258,7 +258,7 @@ func (qs *QuerySet[T]) buildWhere() (string, []any) {
 			col = toColumnName(f.column)
 		}
 
-		clause, val := buildFilterClause(col, f.operator, f.value, i+1)
+		clause, val := buildFilterClause(quoteIdent(col), f.operator, f.value, i+1)
 		clauses = append(clauses, clause)
 		if val != nil {
 			if slice, ok := val.([]any); ok {
@@ -287,7 +287,7 @@ func (qs *QuerySet[T]) buildInsert(instance *T) ([]string, []string, []any) {
 		}
 		val := fieldValue(v, f.Name)
 		if val == nil && f.Nullable {
-			columns = append(columns, f.Column)
+			columns = append(columns, quoteIdent(f.Column))
 			placeholders = append(placeholders, fmt.Sprintf("$%d", i))
 			values = append(values, nil)
 			i++
@@ -296,7 +296,7 @@ func (qs *QuerySet[T]) buildInsert(instance *T) ([]string, []string, []any) {
 		if isZeroValue(val) && f.Nullable {
 			continue
 		}
-		columns = append(columns, f.Column)
+		columns = append(columns, quoteIdent(f.Column))
 		placeholders = append(placeholders, fmt.Sprintf("$%d", i))
 		values = append(values, val)
 		i++

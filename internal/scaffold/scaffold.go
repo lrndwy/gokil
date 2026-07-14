@@ -250,7 +250,6 @@ func URLPatterns(app *framework.App, r *router.Router) {
 const viewsUserTemplate = `package views
 
 import (
-	"context"
 	"net/http"
 
 	"{{.ModPath}}/models"
@@ -400,8 +399,6 @@ func PostDelete(ctx *views.Context) error {
 const viewsTagTemplate = `package views
 
 import (
-	"context"
-
 	"{{.ModPath}}/models"
 	"github.com/lrndwy/gokil/orm"
 	"github.com/lrndwy/gokil/views"

@@ -98,15 +98,15 @@ func (qs *QuerySet[T]) prefetchHasMany(results []*T, relField *FieldMeta) error 
 	cols := []string{}
 	for _, f := range relatedMeta.Fields {
 		if !f.IsRelation {
-			cols = append(cols, f.Column)
+			cols = append(cols, quoteIdent(f.Column))
 		}
 	}
 
 	query := fmt.Sprintf(
 		"SELECT %s FROM %s WHERE %s IN (%s)",
 		strings.Join(cols, ", "),
-		relatedMeta.TableName,
-		fkCol,
+		quoteIdent(relatedMeta.TableName),
+		quoteIdent(fkCol),
 		strings.Join(placeholders, ", "),
 	)
 
@@ -163,18 +163,18 @@ func (qs *QuerySet[T]) prefetchM2M(results []*T, relField *FieldMeta) error {
 	relatedCols := []string{}
 	for _, f := range relatedMeta.Fields {
 		if !f.IsRelation {
-			relatedCols = append(relatedCols, "r."+f.Column)
+			relatedCols = append(relatedCols, "r."+quoteIdent(f.Column))
 		}
 	}
 
 	query := fmt.Sprintf(
 		"SELECT t.%s, %s FROM %s t JOIN %s r ON r.id = t.%s WHERE t.%s IN (%s)",
-		srcCol,
+		quoteIdent(srcCol),
 		strings.Join(relatedCols, ", "),
-		through,
-		relatedMeta.TableName,
-		dstCol,
-		srcCol,
+		quoteIdent(through),
+		quoteIdent(relatedMeta.TableName),
+		quoteIdent(dstCol),
+		quoteIdent(srcCol),
 		strings.Join(placeholders, ", "),
 	)
 
@@ -266,14 +266,14 @@ func loadRelatedByIDs(ctx context.Context, meta *ModelMeta, ids []int64) (map[in
 	cols := []string{}
 	for _, f := range meta.Fields {
 		if !f.IsRelation {
-			cols = append(cols, f.Column)
+			cols = append(cols, quoteIdent(f.Column))
 		}
 	}
 
 	query := fmt.Sprintf(
 		"SELECT %s FROM %s WHERE id IN (%s)",
 		strings.Join(cols, ", "),
-		meta.TableName,
+		quoteIdent(meta.TableName),
 		strings.Join(placeholders, ", "),
 	)
 

@@ -403,3 +403,7 @@ func SQLType(f FieldMeta) string {
 		return "TEXT"
 	}
 }
+
+func quoteIdent(name string) string {
+	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+}
