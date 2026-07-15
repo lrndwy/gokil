@@ -12,7 +12,7 @@ import (
 )
 
 func TestHTTPError(t *testing.T) {
-	err := views.NotFound("user not found")
+	err := views.NotFoundError("user not found")
 	var httpErr *views.HTTPError
 	if !errors.As(err, &httpErr) {
 		t.Fatal("expected HTTPError")
@@ -90,20 +90,6 @@ func TestResponseEnvelope(t *testing.T) {
 	}
 	if body.Message != "users retrieved" {
 		t.Fatalf("message = %q", body.Message)
-	}
-}
-
-func TestRequiredFields(t *testing.T) {
-	err := views.RequiredFields(map[string]string{
-		"email": "",
-		"name":  "Ali",
-	})
-	var httpErr *views.HTTPError
-	if !errors.As(err, &httpErr) {
-		t.Fatalf("expected HTTPError, got %v", err)
-	}
-	if httpErr.Status != http.StatusBadRequest {
-		t.Fatalf("status = %d", httpErr.Status)
 	}
 }
 

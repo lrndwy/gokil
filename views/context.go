@@ -1,13 +1,9 @@
 package views
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
-
-	"github.com/lrndwy/gokil/orm"
-	"github.com/lrndwy/gokil/storage"
 )
 
 type Handler func(*Context) error
@@ -15,53 +11,49 @@ type Handler func(*Context) error
 type Context struct {
 	Request *http.Request
 	Writer  http.ResponseWriter
-	DB      *orm.DB
-	Storage storage.Provider
 	Params  map[string]string
 }
 
-func Wrap(handler Handler) func(http.ResponseWriter, *http.Request, map[string]string) {
-	return func(w http.ResponseWriter, r *http.Request, params map[string]string) {
-		ctx := &Context{
-			Request: r,
-			Writer:  w,
-			Params:  params,
-		}
-		if err := handler(ctx); err != nil {
-			_ = HandleError(ctx, err)
-		}
-	}
+type DBContextKey struct{}
+
+func (c *Context) JSON(data any) error {
+	c.Writer.Header().Set("Content-Type", "application/json")
+	return json.NewEncoder(c.Writer).Encode(data)
 }
 
-func (c *Context) JSON(status int, payload any) error {
+func (c *Context) Success(status int, message string, data any) error {
 	c.Writer.Header().Set("Content-Type", "application/json")
 	c.Writer.WriteHeader(status)
-	return json.NewEncoder(c.Writer).Encode(payload)
+	return json.NewEncoder(c.Writer).Encode(map[string]any{
+		"status":  status,
+		"message": message,
+		"data":    data,
+	})
 }
 
-func Error(c *Context, status int, message string) error {
-	return c.JSON(status, map[string]any{"error": message})
+func (c *Context) Error(status int, message string) error {
+	c.Writer.Header().Set("Content-Type", "application/json")
+	c.Writer.WriteHeader(status)
+	return json.NewEncoder(c.Writer).Encode(map[string]any{
+		"error": message,
+	})
+}
+
+func (c *Context) NotFound() error {
+	return c.Error(http.StatusNotFound, "not found")
 }
 
 func (c *Context) NoContent() {
 	c.Writer.WriteHeader(http.StatusNoContent)
 }
 
-func (c *Context) BindJSON(v any) error {
+func (c *Context) Bind(v any) error {
 	defer c.Request.Body.Close()
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		return err
 	}
 	return json.Unmarshal(body, v)
-}
-
-// MustBindJSON parses JSON and returns 400 Bad Request on invalid input.
-func (c *Context) MustBindJSON(v any) error {
-	if err := c.BindJSON(v); err != nil {
-		return BadRequest("invalid json")
-	}
-	return nil
 }
 
 func (c *Context) Param(name string) string {
@@ -75,6 +67,6 @@ func (c *Context) Query(name string) string {
 	return c.Request.URL.Query().Get(name)
 }
 
-func (c *Context) DBContext() context.Context {
-	return c.Request.Context()
+func (c *Context) DB() interface{} {
+	return c.Request.Context().Value(DBContextKey{})
 }

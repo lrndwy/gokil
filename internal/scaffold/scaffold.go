@@ -61,10 +61,8 @@ func Create(opts Options) error {
 		"settings.go":         settingsTemplate,
 		"models/models.go":    modelsTemplate,
 		"jobs/cron.go":        cronJobsTemplate,
-		"urls.go":             urlsTemplate,
-		"views/post.go":       viewsPostTemplate,
-		"views/user.go":       viewsUserTemplate,
-		"views/tag.go":        viewsTagTemplate,
+		"app/users/route.go":  appUsersTemplate,
+		"app/posts/route.go":  appPostsTemplate,
 		".env.example":        envExampleTemplate,
 		".gitignore":          gitignoreTemplate,
 		filepath.Join("cmd", name, "main.go"): mainTemplate,
@@ -219,421 +217,158 @@ type Tag struct {
 }
 `
 
-const urlsTemplate = `package {{.Name}}
+const appUsersTemplate = `package users
 
 import (
-	"{{.ModPath}}/views"
+	"{{.ModPath}}/models"
 	"github.com/lrndwy/gokil/framework"
-	"github.com/lrndwy/gokil/router"
-)
-
-func URLPatterns(app *framework.App, r *router.Router) {
-	r.GET("/api/health/", app.Wrap(views.HealthCheck))
-	r.GET("/api/users/", app.Wrap(views.UserList))
-	r.POST("/api/users/", app.Wrap(views.UserCreate))
-	r.GET("/api/users/:id", app.Wrap(views.UserDetail))
-	r.PUT("/api/users/:id", app.Wrap(views.UserUpdate))
-	r.DELETE("/api/users/:id", app.Wrap(views.UserDelete))
-	r.GET("/api/posts/", app.Wrap(views.PostList))
-	r.POST("/api/posts/", app.Wrap(views.PostCreate))
-	r.GET("/api/posts/:id", app.Wrap(views.PostDetail))
-	r.PUT("/api/posts/:id", app.Wrap(views.PostUpdate))
-	r.DELETE("/api/posts/:id", app.Wrap(views.PostDelete))
-	r.GET("/api/tags/", app.Wrap(views.TagList))
-	r.POST("/api/tags/", app.Wrap(views.TagCreate))
-	r.GET("/api/tags/:id", app.Wrap(views.TagDetail))
-	r.PUT("/api/tags/:id", app.Wrap(views.TagUpdate))
-	r.DELETE("/api/tags/:id", app.Wrap(views.TagDelete))
-}
-`
-
-const viewsUserTemplate = `package views
-
-import (
-	"context"
-	"net/http"
-
-	"{{.ModPath}}/models"
-	"github.com/lrndwy/gokil/orm"
 	"github.com/lrndwy/gokil/views"
 )
 
-func HealthCheck(ctx *views.Context) error {
-	return ctx.JSON(http.StatusOK, map[string]string{"status": "ok"})
+func init() {
+	framework.RegisterRoute("GET", "/users", GET)
+	framework.RegisterRoute("POST", "/users", POST)
+	framework.RegisterRoute("GET", "/users/:id", GETByID)
+	framework.RegisterRoute("PUT", "/users/:id", PUT)
+	framework.RegisterRoute("DELETE", "/users/:id", DELETE)
 }
 
-func UserList(ctx *views.Context) error {
-	items, err := orm.Objects[models.User](ctx.DBContext()).
-		PrefetchRelated("Posts").All()
+func GET(ctx *views.Context) error {
+	users, err := models.Query[models.User]().PrefetchRelated("Posts").All()
 	if err != nil {
-		return err
+		return ctx.Error(500, err.Error())
 	}
-	if items == nil {
-		items = make([]*models.User, 0)
-	}
-	type userResponse struct {
-		ID        int64            ` + "`" + `json:"id"` + "`" + `
-		Email     string           ` + "`" + `json:"email"` + "`" + `
-		Name      string           ` + "`" + `json:"name"` + "`" + `
-		CreatedAt string           ` + "`" + `json:"created_at"` + "`" + `
-		UpdatedAt string           ` + "`" + `json:"updated_at"` + "`" + `
-		Posts     []postReference  ` + "`" + `json:"posts"` + "`" + `
-	}
-	type postReference struct {
-		ID int64 ` + "`" + `json:"id"` + "`" + `
-	}
-	resp := make([]userResponse, len(items))
-	for i, u := range items {
-		posts := make([]postReference, 0)
-		for _, p := range u.Posts.Items {
-			posts = append(posts, postReference{ID: p.ID})
-		}
-		resp[i] = userResponse{
-			ID: u.ID, Email: u.Email, Name: u.Name,
-			CreatedAt: u.CreatedAt.Format("2006-01-02T15:04:05Z"),
-			UpdatedAt: u.UpdatedAt.Format("2006-01-02T15:04:05Z"),
-			Posts:     posts,
-		}
-	}
-	return ctx.OK("users retrieved", resp)
+	return ctx.Success(200, "users retrieved", users)
 }
 
-func UserCreate(ctx *views.Context) error {
-	var input struct {
-		Email string ` + "`" + `json:"email"` + "`" + `
+func POST(ctx *views.Context) error {
+	var body struct {
 		Name  string ` + "`" + `json:"name"` + "`" + `
-	}
-	if err := ctx.MustBindJSON(&input); err != nil {
-		return err
-	}
-	if err := views.RequiredFields(map[string]string{
-		"email": input.Email,
-		"name":  input.Name,
-	}); err != nil {
-		return err
-	}
-	obj, err := orm.Create(ctx.DBContext(), &models.User{Email: input.Email, Name: input.Name})
-	if err != nil {
-		return err
-	}
-	return ctx.Created("user created", map[string]any{
-		"id":         obj.ID,
-		"email":      obj.Email,
-		"name":       obj.Name,
-		"created_at": obj.CreatedAt.Format("2006-01-02T15:04:05Z"),
-		"updated_at": obj.UpdatedAt.Format("2006-01-02T15:04:05Z"),
-	})
-}
-
-func UserDetail(ctx *views.Context) error {
-	obj, err := orm.Objects[models.User](ctx.DBContext()).
-		PrefetchRelated("Posts").
-		Filter("id", ctx.Param("id")).Get()
-	if err != nil {
-		return views.NotFoundIf(err, "user not found")
-	}
-	posts := make([]map[string]any, 0)
-	for _, p := range obj.Posts.Items {
-		posts = append(posts, map[string]any{"id": p.ID})
-	}
-	return ctx.OK("user retrieved", map[string]any{
-		"id":         obj.ID,
-		"email":      obj.Email,
-		"name":       obj.Name,
-		"created_at": obj.CreatedAt.Format("2006-01-02T15:04:05Z"),
-		"updated_at": obj.UpdatedAt.Format("2006-01-02T15:04:05Z"),
-		"posts":      posts,
-	})
-}
-
-func UserUpdate(ctx *views.Context) error {
-	var input struct {
 		Email string ` + "`" + `json:"email"` + "`" + `
-		Name  string ` + "`" + `json:"name"` + "`" + `
 	}
-	if err := ctx.MustBindJSON(&input); err != nil {
-		return err
+	if err := ctx.Bind(&body); err != nil {
+		return ctx.Error(400, err.Error())
 	}
-	if err := views.RequiredFields(map[string]string{
-		"email": input.Email,
-		"name":  input.Name,
-	}); err != nil {
-		return err
+	user := &models.User{Name: body.Name, Email: body.Email}
+	if err := models.Create(user); err != nil {
+		return ctx.Error(500, err.Error())
 	}
-	obj, err := orm.UpdateByID[models.User](ctx.DBContext(), ctx.Param("id"), map[string]any{
-		"email": input.Email,
-		"name":  input.Name,
-	})
-	if err != nil {
-		return views.NotFoundIf(err, "user not found")
-	}
-	return ctx.OK("user updated", map[string]any{
-		"id":         obj.ID,
-		"email":      obj.Email,
-		"name":       obj.Name,
-		"created_at": obj.CreatedAt.Format("2006-01-02T15:04:05Z"),
-		"updated_at": obj.UpdatedAt.Format("2006-01-02T15:04:05Z"),
-	})
+	return ctx.Success(201, "user created", user)
 }
 
-func UserDelete(ctx *views.Context) error {
-	obj, err := orm.DeleteByID[models.User](ctx.DBContext(), ctx.Param("id"))
+func GETByID(ctx *views.Context) error {
+	user, err := models.Query[models.User]().PrefetchRelated("Posts").Filter("id", ctx.Param("id")).First()
 	if err != nil {
-		return views.NotFoundIf(err, "user not found")
+		return ctx.NotFound()
 	}
-	return ctx.OK("user deleted", map[string]any{
-		"id":         obj.ID,
-		"email":      obj.Email,
-		"name":       obj.Name,
-	})
+	return ctx.Success(200, "user retrieved", user)
 }
-`
 
-const viewsPostTemplate = `package views
-
-import (
-	"net/http"
-
-	"{{.ModPath}}/models"
-	"github.com/lrndwy/gokil/orm"
-	"github.com/lrndwy/gokil/views"
-)
-
-func PostList(ctx *views.Context) error {
-	items, err := orm.Objects[models.Post](ctx.DBContext()).
-		SelectRelated("Author").All()
+func PUT(ctx *views.Context) error {
+	user, err := models.Query[models.User]().Filter("id", ctx.Param("id")).First()
 	if err != nil {
-		return err
+		return ctx.NotFound()
 	}
-	if items == nil {
-		items = make([]*models.Post, 0)
-	}
-	type authorRef struct {
-		ID   int64  ` + "`" + `json:"id"` + "`" + `
+	var body struct {
 		Name string ` + "`" + `json:"name"` + "`" + `
 	}
-	type postResponse struct {
-		ID        int64     ` + "`" + `json:"id"` + "`" + `
-		Title     string    ` + "`" + `json:"title"` + "`" + `
-		Content   string    ` + "`" + `json:"content"` + "`" + `
-		Author    authorRef ` + "`" + `json:"author"` + "`" + `
-		CreatedAt string    ` + "`" + `json:"created_at"` + "`" + `
-		UpdatedAt string    ` + "`" + `json:"updated_at"` + "`" + `
+	if err := ctx.Bind(&body); err != nil {
+		return ctx.Error(400, err.Error())
 	}
-	resp := make([]postResponse, len(items))
-	for i, p := range items {
-		resp[i] = postResponse{
-			ID: p.ID, Title: p.Title, Content: p.Content,
-			Author:    authorRef{ID: p.Author.ID, Name: p.Author.Name},
-			CreatedAt: p.CreatedAt.Format("2006-01-02T15:04:05Z"),
-			UpdatedAt: p.UpdatedAt.Format("2006-01-02T15:04:05Z"),
-		}
+	user.Name = body.Name
+	if err := models.Save(user); err != nil {
+		return ctx.Error(500, err.Error())
 	}
-	return ctx.OK("posts retrieved", resp)
+	return ctx.Success(200, "user updated", user)
 }
 
-func PostCreate(ctx *views.Context) error {
-	var input struct {
+func DELETE(ctx *views.Context) error {
+	if err := models.Delete[models.User](ctx.Param("id")); err != nil {
+		return ctx.Error(500, err.Error())
+	}
+	return ctx.Success(200, "user deleted", nil)
+}
+`
+
+const appPostsTemplate = `package posts
+
+import (
+	"{{.ModPath}}/models"
+	"github.com/lrndwy/gokil/framework"
+	"github.com/lrndwy/gokil/orm"
+	"github.com/lrndwy/gokil/views"
+)
+
+func init() {
+	framework.RegisterRoute("GET", "/posts", GET)
+	framework.RegisterRoute("POST", "/posts", POST)
+	framework.RegisterRoute("GET", "/posts/:id", GETByID)
+	framework.RegisterRoute("PUT", "/posts/:id", PUT)
+	framework.RegisterRoute("DELETE", "/posts/:id", DELETE)
+}
+
+func GET(ctx *views.Context) error {
+	posts, err := models.Query[models.Post]().SelectRelated("Author").All()
+	if err != nil {
+		return ctx.Error(500, err.Error())
+	}
+	return ctx.Success(200, "posts retrieved", posts)
+}
+
+func POST(ctx *views.Context) error {
+	var body struct {
 		Title    string  ` + "`" + `json:"title"` + "`" + `
 		Content  string  ` + "`" + `json:"content"` + "`" + `
 		AuthorID int64   ` + "`" + `json:"author_id"` + "`" + `
 		TagIDs   []int64 ` + "`" + `json:"tag_ids"` + "`" + `
 	}
-	if err := ctx.MustBindJSON(&input); err != nil {
-		return err
-	}
-	if err := views.RequiredFields(map[string]string{
-		"title": input.Title,
-	}); err != nil {
-		return err
+	if err := ctx.Bind(&body); err != nil {
+		return ctx.Error(400, err.Error())
 	}
 	post := &models.Post{
-		Title:   input.Title,
-		Content: input.Content,
-		Author:  orm.BelongsTo[models.User]{ID: input.AuthorID},
+		Title:   body.Title,
+		Content: body.Content,
+		Author:  orm.BelongsTo[models.User]{ID: body.AuthorID},
 	}
-	if _, err := orm.Create(ctx.DBContext(), post); err != nil {
-		return err
+	if err := models.Create(post); err != nil {
+		return ctx.Error(500, err.Error())
 	}
-	if len(input.TagIDs) > 0 {
-		if err := orm.SetM2M(ctx.DBContext(), post, "Tags", input.TagIDs...); err != nil {
-			return err
-		}
-	}
-	return ctx.Created("post created", map[string]any{
-		"id":         post.ID,
-		"title":      post.Title,
-		"content":    post.Content,
-		"author_id":  input.AuthorID,
-		"tag_ids":    input.TagIDs,
-		"created_at": post.CreatedAt.Format("2006-01-02T15:04:05Z"),
-		"updated_at": post.UpdatedAt.Format("2006-01-02T15:04:05Z"),
-	})
+	return ctx.Success(201, "post created", post)
 }
 
-func PostDetail(ctx *views.Context) error {
-	p, err := orm.Objects[models.Post](ctx.DBContext()).
-		SelectRelated("Author").
-		PrefetchRelated("Tags").
-		Filter("id", ctx.Param("id")).Get()
+func GETByID(ctx *views.Context) error {
+	post, err := models.Query[models.Post]().SelectRelated("Author").PrefetchRelated("Tags").Filter("id", ctx.Param("id")).First()
 	if err != nil {
-		return views.NotFoundIf(err, "post not found")
+		return ctx.NotFound()
 	}
-	tagIDs := make([]int64, 0)
-	for _, t := range p.Tags.Items {
-		tagIDs = append(tagIDs, t.ID)
-	}
-	return ctx.OK("post retrieved", map[string]any{
-		"id":         p.ID,
-		"title":      p.Title,
-		"content":    p.Content,
-		"author":     map[string]any{"id": p.Author.ID, "name": p.Author.Name},
-		"tag_ids":    tagIDs,
-		"created_at": p.CreatedAt.Format("2006-01-02T15:04:05Z"),
-		"updated_at": p.UpdatedAt.Format("2006-01-02T15:04:05Z"),
-	})
+	return ctx.Success(200, "post retrieved", post)
 }
 
-func PostUpdate(ctx *views.Context) error {
-	var input struct {
-		Title    string  ` + "`" + `json:"title"` + "`" + `
-		Content  string  ` + "`" + `json:"content"` + "`" + `
-		AuthorID int64   ` + "`" + `json:"author_id"` + "`" + `
-		TagIDs   []int64 ` + "`" + `json:"tag_ids"` + "`" + `
-	}
-	if err := ctx.MustBindJSON(&input); err != nil {
-		return err
-	}
-	if err := views.RequiredFields(map[string]string{
-		"title": input.Title,
-	}); err != nil {
-		return err
-	}
-	post, err := orm.UpdateByID[models.Post](ctx.DBContext(), ctx.Param("id"), map[string]any{
-		"title":     input.Title,
-		"content":   input.Content,
-		"author_id": input.AuthorID,
-	})
+func PUT(ctx *views.Context) error {
+	post, err := models.Query[models.Post]().Filter("id", ctx.Param("id")).First()
 	if err != nil {
-		return views.NotFoundIf(err, "post not found")
+		return ctx.NotFound()
 	}
-	if input.TagIDs != nil {
-		if err := orm.SetM2M(ctx.DBContext(), post, "Tags", input.TagIDs...); err != nil {
-			return err
-		}
+	var body struct {
+		Title    string ` + "`" + `json:"title"` + "`" + `
+		Content  string ` + "`" + `json:"content"` + "`" + `
 	}
-	return ctx.OK("post updated", map[string]any{
-		"id":         post.ID,
-		"title":      post.Title,
-		"content":    post.Content,
-		"author_id":  input.AuthorID,
-		"tag_ids":    input.TagIDs,
-		"created_at": post.CreatedAt.Format("2006-01-02T15:04:05Z"),
-		"updated_at": post.UpdatedAt.Format("2006-01-02T15:04:05Z"),
-	})
+	if err := ctx.Bind(&body); err != nil {
+		return ctx.Error(400, err.Error())
+	}
+	post.Title = body.Title
+	post.Content = body.Content
+	if err := models.Save(post); err != nil {
+		return ctx.Error(500, err.Error())
+	}
+	return ctx.Success(200, "post updated", post)
 }
 
-func PostDelete(ctx *views.Context) error {
-	obj, err := orm.DeleteByID[models.Post](ctx.DBContext(), ctx.Param("id"))
-	if err != nil {
-		return views.NotFoundIf(err, "post not found")
+func DELETE(ctx *views.Context) error {
+	if err := models.Delete[models.Post](ctx.Param("id")); err != nil {
+		return ctx.Error(500, err.Error())
 	}
-	return ctx.OK("post deleted", map[string]any{
-		"id":    obj.ID,
-		"title": obj.Title,
-	})
-}
-`
-
-const viewsTagTemplate = `package views
-
-import (
-	"{{.ModPath}}/models"
-	"github.com/lrndwy/gokil/orm"
-	"github.com/lrndwy/gokil/views"
-)
-
-func TagList(ctx *views.Context) error {
-	items, err := orm.Objects[models.Tag](ctx.DBContext()).All()
-	if err != nil {
-		return err
-	}
-	if items == nil {
-		items = make([]*models.Tag, 0)
-	}
-	type tagResponse struct {
-		ID   int64  ` + "`" + `json:"id"` + "`" + `
-		Name string ` + "`" + `json:"name"` + "`" + `
-	}
-	resp := make([]tagResponse, len(items))
-	for i, t := range items {
-		resp[i] = tagResponse{ID: t.ID, Name: t.Name}
-	}
-	return ctx.OK("tags retrieved", resp)
-}
-
-func TagCreate(ctx *views.Context) error {
-	var input struct {
-		Name string ` + "`" + `json:"name"` + "`" + `
-	}
-	if err := ctx.MustBindJSON(&input); err != nil {
-		return err
-	}
-	if err := views.Required("name", input.Name); err != nil {
-		return err
-	}
-	obj, err := orm.Create(ctx.DBContext(), &models.Tag{Name: input.Name})
-	if err != nil {
-		return err
-	}
-	return ctx.Created("tag created", map[string]any{
-		"id":   obj.ID,
-		"name": obj.Name,
-	})
-}
-
-func TagDetail(ctx *views.Context) error {
-	obj, err := orm.GetByID[models.Tag](ctx.DBContext(), ctx.Param("id"))
-	if err != nil {
-		return views.NotFoundIf(err, "tag not found")
-	}
-	return ctx.OK("tag retrieved", map[string]any{
-		"id":   obj.ID,
-		"name": obj.Name,
-	})
-}
-
-func TagUpdate(ctx *views.Context) error {
-	var input struct {
-		Name string ` + "`" + `json:"name"` + "`" + `
-	}
-	if err := ctx.MustBindJSON(&input); err != nil {
-		return err
-	}
-	if err := views.Required("name", input.Name); err != nil {
-		return err
-	}
-	obj, err := orm.UpdateByID[models.Tag](ctx.DBContext(), ctx.Param("id"), map[string]any{
-		"name": input.Name,
-	})
-	if err != nil {
-		return views.NotFoundIf(err, "tag not found")
-	}
-	return ctx.OK("tag updated", map[string]any{
-		"id":   obj.ID,
-		"name": obj.Name,
-	})
-}
-
-func TagDelete(ctx *views.Context) error {
-	obj, err := orm.DeleteByID[models.Tag](ctx.DBContext(), ctx.Param("id"))
-	if err != nil {
-		return views.NotFoundIf(err, "tag not found")
-	}
-	return ctx.OK("tag deleted", map[string]any{
-		"id":   obj.ID,
-		"name": obj.Name,
-	})
+	return ctx.Success(200, "post deleted", nil)
 }
 `
 
@@ -645,9 +380,10 @@ import (
 	"log"
 	"os"
 
-	"{{.ModPath}}"
 	"{{.ModPath}}/jobs"
 	_ "{{.ModPath}}/models"
+	_ "{{.ModPath}}/app/users"
+	_ "{{.ModPath}}/app/posts"
 	"github.com/lrndwy/gokil/cron"
 	"github.com/lrndwy/gokil/cliui"
 	"github.com/lrndwy/gokil/framework"
@@ -692,12 +428,11 @@ func runServe() error {
 		return err
 	}
 
-	app, err := framework.New(settings, nil)
+	app, err := framework.New(settings)
 	if err != nil {
 		return err
 	}
 
-	{{.Name}}.URLPatterns(app, app.Router)
 	return app.Run(context.Background())
 }
 

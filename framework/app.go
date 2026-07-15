@@ -12,23 +12,20 @@ import (
 	"syscall"
 
 	"github.com/lrndwy/gokil/config"
+	"github.com/lrndwy/gokil/models"
 	"github.com/lrndwy/gokil/orm"
 	"github.com/lrndwy/gokil/router"
-	"github.com/lrndwy/gokil/storage"
 	"github.com/lrndwy/gokil/views"
 )
-
-type URLConfigurator func(*router.Router)
 
 type App struct {
 	Settings config.Settings
 	Router   *router.Router
-	Storage  storage.Provider
 	DB       *orm.DB
 	server   *http.Server
 }
 
-func New(settings config.Settings, configureURLs URLConfigurator) (*App, error) {
+func New(settings config.Settings) (*App, error) {
 	var db *orm.DB
 	if settings.Database.DSN != "" {
 		log.Printf("[%s] connecting to database...", settings.AppName)
@@ -45,14 +42,6 @@ func New(settings config.Settings, configureURLs URLConfigurator) (*App, error) 
 		log.Printf("[%s] database connected", settings.AppName)
 	}
 
-	provider, err := storage.New(settings.Storage)
-	if err != nil {
-		if db != nil {
-			_ = db.Close()
-		}
-		return nil, err
-	}
-
 	r := router.New()
 	r.GET("/healthz", func(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
 		w.Header().Set("Content-Type", "application/json")
@@ -60,17 +49,13 @@ func New(settings config.Settings, configureURLs URLConfigurator) (*App, error) 
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 
-	if configureURLs != nil {
-		configureURLs(r)
-	}
-
 	app := &App{
 		Settings: settings,
 		Router:   r,
-		Storage:  provider,
 		DB:       db,
 	}
 
+	app.setupRoutes()
 	r.Use(app.requestMiddleware())
 	return app, nil
 }
@@ -88,13 +73,13 @@ func (a *App) Wrap(handler views.Handler) router.HandlerFunc {
 		ctx := &views.Context{
 			Request: r,
 			Writer:  w,
-			DB:      a.DB,
-			Storage: a.Storage,
 			Params:  params,
 		}
 		reqCtx := r.Context()
 		if a.DB != nil {
 			reqCtx = orm.WithDB(reqCtx, a.DB)
+			models.SetContext(reqCtx)
+			defer models.ClearContext()
 		}
 		ctx.Request = r.WithContext(reqCtx)
 
@@ -154,3 +139,5 @@ func (a *App) Close() error {
 	}
 	return nil
 }
+
+type DBContextKey struct{}
