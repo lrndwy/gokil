@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+
+	"github.com/lrndwy/gokil/orm"
 )
 
 type Handler func(*Context) error
@@ -18,7 +20,7 @@ type DBContextKey struct{}
 
 func (c *Context) JSON(data any) error {
 	c.Writer.Header().Set("Content-Type", "application/json")
-	return json.NewEncoder(c.Writer).Encode(data)
+	return json.NewEncoder(c.Writer).Encode(orm.ProjectForJSON(data))
 }
 
 func (c *Context) Success(status int, message string, data any) error {
@@ -27,7 +29,7 @@ func (c *Context) Success(status int, message string, data any) error {
 	return json.NewEncoder(c.Writer).Encode(map[string]any{
 		"status":  status,
 		"message": message,
-		"data":    data,
+		"data":    orm.ProjectForJSON(data),
 	})
 }
 

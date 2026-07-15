@@ -1,6 +1,10 @@
 package views
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/lrndwy/gokil/orm"
+)
 
 type Response struct {
 	Status  int    `json:"status"`
@@ -34,7 +38,7 @@ func (c *Context) Paginated(message string, data any, meta PageMeta) error {
 	return c.JSON(PaginatedResponse{
 		Status:  http.StatusOK,
 		Message: message,
-		Data:    data,
+		Data:    orm.ProjectForJSON(data),
 		Meta:    meta,
 	})
 }

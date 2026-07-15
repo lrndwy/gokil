@@ -105,6 +105,13 @@ func (qs *QuerySet[T]) All() ([]*T, error) {
 		}
 	}
 
+	if len(qs.only) > 0 {
+		names := qs.projectionFieldNames()
+		for _, instance := range results {
+			SetProjection(instance, names)
+		}
+	}
+
 	return results, nil
 }
 
@@ -346,6 +353,39 @@ func (qs *QuerySet[T]) belongsToFKField(rel *FieldMeta) *FieldMeta {
 		}
 	}
 	return nil
+}
+
+// projectionFieldNames returns Go struct field names that should appear in JSON
+// after an Only() query (PK + Only fields + loaded relation fields).
+func (qs *QuerySet[T]) projectionFieldNames() []string {
+	wanted := map[string]bool{}
+	for _, name := range qs.only {
+		fm, err := qs.resolveOnlyField(name)
+		if err != nil {
+			continue
+		}
+		if fm.VirtualFK && fm.RelationOwner != "" {
+			wanted[fm.RelationOwner] = true
+		} else {
+			wanted[fm.Name] = true
+		}
+	}
+	for _, f := range qs.meta.Fields {
+		if f.PrimaryKey {
+			wanted[f.Name] = true
+		}
+	}
+	for _, relName := range qs.selectRelated {
+		wanted[relName] = true
+	}
+	for _, relName := range qs.prefetchRelated {
+		wanted[relName] = true
+	}
+	out := make([]string, 0, len(wanted))
+	for name := range wanted {
+		out = append(out, name)
+	}
+	return out
 }
 
 func (qs *QuerySet[T]) buildWhere() (string, []any) {

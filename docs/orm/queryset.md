@@ -63,6 +63,7 @@ Catatan:
 - `Only("Author")` pada `BelongsTo` di-resolve ke FK (`author_id`).
 - Field relasi `HasMany` / `ManyMany` tidak bisa dipakai di `Only`.
 - Jika dipakai bersama `SelectRelated`, kolom FK relasi itu juga otomatis ikut diselect.
+- Response JSON (`ctx.Success` / `ctx.JSON`) hanya menampilkan field yang di-Only (plus `ID`). Field lain tidak ikut terserialisasi.
 
 ### SelectRelated / PrefetchRelated
 
