@@ -7,10 +7,13 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/lrndwy/gokil/internal/routegen"
 )
 
 var (
-	reRoute    = regexp.MustCompile(`r\.(GET|POST|PUT|PATCH|DELETE)\("([^"]+)",\s*app\.Wrap\((\w+)\.(\w+)\)\)`)
+	reRegister = regexp.MustCompile(`framework\.RegisterRoute\("([^"]+)",\s*"([^"]+)",\s*(\w+)\.(\w+)\)`)
+	reLegacy   = regexp.MustCompile(`r\.(GET|POST|PUT|PATCH|DELETE)\("([^"]+)",\s*app\.Wrap\((\w+)\.(\w+)\)\)`)
 	reJSONTag  = regexp.MustCompile(`json:"([^"]+)"`)
 	reQueryStr = regexp.MustCompile(`ctx\.Query\("([^"]+)"\)`)
 	reQueryInt = regexp.MustCompile(`ctx\.QueryInt\("([^"]+)"`)
@@ -18,24 +21,28 @@ var (
 
 // ParseProject scans the project directory and extracts route metadata.
 func ParseProject(projectDir string) ([]RouteMetadata, error) {
-	routes, err := parseURLs(projectDir)
+	routes, err := parseRoutes(projectDir)
 	if err != nil {
 		return nil, err
 	}
 
-	handlers, err := parseViews(projectDir)
+	handlers, err := parseAppHandlers(projectDir)
 	if err != nil {
-		return nil, err
+		// Fall back to legacy views/ if app/ handlers unavailable.
+		handlers, _ = parseViews(projectDir)
 	}
 
 	for i := range routes {
 		route := &routes[i]
-		// Extract just the function name (e.g., "views.UserCreate" -> "UserCreate")
 		handlerName := route.Handler
 		if idx := strings.LastIndex(handlerName, "."); idx >= 0 {
 			handlerName = handlerName[idx+1:]
 		}
-		if h, ok := handlers[handlerName]; ok {
+		key := route.Method + " " + route.Path
+		if h, ok := handlers[key]; ok {
+			route.BodyFields = h.BodyFields
+			route.QueryParams = h.QueryParams
+		} else if h, ok := handlers[handlerName]; ok {
 			route.BodyFields = h.BodyFields
 			route.QueryParams = h.QueryParams
 		}
@@ -68,7 +75,50 @@ func routeOrder(method string) int {
 	}
 }
 
-// parseURLs reads urls.go and extracts registered routes.
+func parseRoutes(projectDir string) ([]RouteMetadata, error) {
+	modPath, err := readModulePath(projectDir)
+	if err == nil {
+		appDir := filepath.Join(projectDir, "app")
+		discovered, scanErr := routegen.Scan(appDir, modPath)
+		if scanErr == nil && len(discovered) > 0 {
+			routes := make([]RouteMetadata, 0, len(discovered))
+			for _, r := range discovered {
+				routes = append(routes, RouteMetadata{
+					Method:  r.Method,
+					Path:    r.Path,
+					Handler: r.ImportAlias + "." + r.Handler,
+				})
+			}
+			return routes, nil
+		}
+	}
+
+	if routes, err := parseRegisterFile(projectDir); err == nil && len(routes) > 0 {
+		return routes, nil
+	}
+	if routes, err := parseURLs(projectDir); err == nil && len(routes) > 0 {
+		return routes, nil
+	}
+	return nil, fmt.Errorf("no routes found (expected app/**/route.go, app/register.go, or urls.go)")
+}
+
+func parseRegisterFile(projectDir string) ([]RouteMetadata, error) {
+	content, err := readFirst(projectDir, filepath.Join("app", "register.go"))
+	if err != nil {
+		return nil, err
+	}
+	var routes []RouteMetadata
+	for _, m := range reRegister.FindAllStringSubmatch(content, -1) {
+		routes = append(routes, RouteMetadata{
+			Method:  m[1],
+			Path:    m[2],
+			Handler: m[3] + "." + m[4],
+		})
+	}
+	return routes, nil
+}
+
+// parseURLs reads urls.go and extracts registered routes (legacy).
 func parseURLs(projectDir string) ([]RouteMetadata, error) {
 	content, err := readFirst(projectDir, "urls.go")
 	if err != nil {
@@ -76,7 +126,7 @@ func parseURLs(projectDir string) ([]RouteMetadata, error) {
 	}
 
 	var routes []RouteMetadata
-	matches := reRoute.FindAllStringSubmatch(content, -1)
+	matches := reLegacy.FindAllStringSubmatch(content, -1)
 
 	for _, m := range matches {
 		routes = append(routes, RouteMetadata{
@@ -89,7 +139,6 @@ func parseURLs(projectDir string) ([]RouteMetadata, error) {
 	return routes, nil
 }
 
-// readFirst finds the first matching file in the project root.
 func readFirst(projectDir string, name string) (string, error) {
 	path := filepath.Join(projectDir, name)
 	data, err := os.ReadFile(path)
@@ -99,12 +148,87 @@ func readFirst(projectDir string, name string) (string, error) {
 	return string(data), nil
 }
 
+func readModulePath(projectDir string) (string, error) {
+	data, err := os.ReadFile(filepath.Join(projectDir, "go.mod"))
+	if err != nil {
+		return "", err
+	}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "module ") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "module ")), nil
+		}
+	}
+	return "", fmt.Errorf("module path not found")
+}
+
 type handlerInfo struct {
 	BodyFields  []Field
 	QueryParams []QueryParam
 }
 
-// parseViews scans views/*.go files and extracts handler metadata.
+// parseAppHandlers scans app/**/route.go for handler body/query metadata.
+func parseAppHandlers(projectDir string) (map[string]handlerInfo, error) {
+	appDir := filepath.Join(projectDir, "app")
+	if _, err := os.Stat(appDir); err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]handlerInfo)
+	err := filepath.WalkDir(appDir, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() || d.Name() != "route.go" {
+			return nil
+		}
+		relDir, err := filepath.Rel(appDir, filepath.Dir(path))
+		if err != nil {
+			return err
+		}
+		if relDir == "." {
+			return nil
+		}
+		urlPath := folderToURL(relDir)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+		for funcName, funcBody := range extractFunctions(string(data)) {
+			switch funcName {
+			case "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS":
+				result[funcName+" "+urlPath] = handlerInfo{
+					BodyFields:  extractJSONFields(funcBody),
+					QueryParams: extractQueryParams(funcBody),
+				}
+				result[funcName] = result[funcName+" "+urlPath]
+			}
+		}
+		return nil
+	})
+	return result, err
+}
+
+func folderToURL(relDir string) string {
+	parts := strings.Split(filepath.ToSlash(relDir), "/")
+	segs := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p == "" || p == "." {
+			continue
+		}
+		if strings.HasPrefix(p, "_") && len(p) > 1 {
+			segs = append(segs, ":"+p[1:])
+			continue
+		}
+		segs = append(segs, p)
+	}
+	if len(segs) == 0 {
+		return "/"
+	}
+	return "/" + strings.Join(segs, "/")
+}
+
+// parseViews scans views/*.go files and extracts handler metadata (legacy).
 func parseViews(projectDir string) (map[string]handlerInfo, error) {
 	viewsDir := filepath.Join(projectDir, "views")
 	entries, err := os.ReadDir(viewsDir)
@@ -196,13 +320,18 @@ func extractJSONFields(funcBody string) []Field {
 	// Join lines to detect multi-line patterns like "var input struct {"
 	joined := strings.Join(lines, "\n")
 
-	if !strings.Contains(joined, "var input struct") && !strings.Contains(joined, "input := struct") {
+	hasBodyStruct := strings.Contains(joined, "var input struct") ||
+		strings.Contains(joined, "input := struct") ||
+		strings.Contains(joined, "var body struct") ||
+		strings.Contains(joined, "body := struct")
+	if !hasBodyStruct {
 		return nil
 	}
 
 	for _, line := range lines {
 		if !collecting {
-			if strings.Contains(line, "var input") || strings.Contains(line, "input :=") {
+			if strings.Contains(line, "var input") || strings.Contains(line, "input :=") ||
+				strings.Contains(line, "var body") || strings.Contains(line, "body :=") {
 				collecting = true
 				braceCount = strings.Count(line, "{") - strings.Count(line, "}")
 				structLines = []string{line}

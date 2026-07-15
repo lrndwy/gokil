@@ -23,9 +23,8 @@ gokil startproject myapi --no-db --no-redis
 
 Output project berisi:
 - `settings.go`
-- `urls.go`
-- `views/`
-- `models/models.go`
+- `models/models.go`, `models/helpers.go`
+- `app/**/route.go` + generated `app/register.go`
 - `migrations/`
 - `.env.example` (dan `.env` jika memilih infra)
 - `docker-compose.yml` (opsional)
@@ -54,7 +53,7 @@ gokil compose --project myapi
 
 ### `build`
 
-Compile project jadi binary (default output `./bin/<project>`).
+Compile project jadi binary (default output `./bin/<project>`). Sebelum compile, menjalankan `generateroutes` otomatis.
 
 ```bash
 gokil build
@@ -63,9 +62,18 @@ gokil build --os linux --arch amd64
 gokil build --project myapi
 ```
 
+### `generateroutes`
+
+Scan `app/**/route.go` dan menulis `app/register.go` (file-based routing).
+
+```bash
+gokil generateroutes
+gokil generateroutes --dir .
+```
+
 ### `postman`
 
-Generate Postman Collection v2.1.0 dari source code. Parser otomatis mengekstrak route, request body, path variables, dan query parameters dari `urls.go` dan `views/*.go`.
+Generate Postman Collection v2.1.0 dari source code. Parser mengekstrak route dari `app/**/route.go` (atau fallback `urls.go` / `views/` lama).
 
 ```bash
 gokil postman

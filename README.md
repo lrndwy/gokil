@@ -8,7 +8,7 @@ Gokil di desain untuk memudahkan pengembangan API RESTful dengan Go. Mengambil r
 ## Fitur
 
 - **Settings terpusat** — konfigurasi via `settings.go`, override dengan environment variable `GOKIL_*`
-- **File-based routing** — route didefinisikan di `app/<resource>/route.go`, auto-discovered via `init()`
+- **File-based routing** — route dari folder `app/**/route.go` (auto-generated `app/register.go`)
 - **Views** — logika REST API dengan envelope JSON responses (`ctx.Success`, `ctx.Error`)
 - **Models terpusat** — satu file `models.go` per project
 - **Migrasi** — `makemigrations` dan `migrate` menghasilkan folder `migrations/` seperti Django
@@ -33,10 +33,17 @@ Setelah terinstall, CLI `gokil` tersedia di `$GOPATH/bin` (pastikan ada di `PATH
 myapi/
 ├── cmd/myapi/main.go        # Entrypoint CLI
 ├── settings.go              # Konfigurasi project
-├── models/models.go         # Semua model (satu file)
-├── app/                     # File-based routing (auto-discovered)
-│   ├── users/route.go       # GET/POST /users, GET/PUT/DELETE /users/:id
-│   └── posts/route.go       # GET/POST /posts, GET/PUT/DELETE /posts/:id
+├── models/
+│   ├── models.go            # Semua model
+│   └── helpers.go           # Re-export Query/Create/Save/Delete
+├── app/                     # File-based routing
+│   ├── register.go          # Generated — jangan diedit
+│   ├── users/
+│   │   ├── route.go         # GET, POST → /users
+│   │   └── _id/route.go     # GET, PUT, DELETE → /users/:id
+│   └── posts/
+│       ├── route.go
+│       └── _id/route.go
 ├── jobs/cron.go             # Cron jobs
 ├── migrations/              # File SQL migrasi
 ├── docker-compose.yml       # Opsional (jika setup DB/Redis via CLI)
@@ -45,24 +52,18 @@ myapi/
 
 ## File-based Routing
 
-Route didefinisikan di `app/<resource>/route.go`. Setiap route file menggunakan `init()` untuk mendaftarkan handler:
+Route ditentukan oleh folder di bawah `app/`. Export fungsi HTTP method (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`) di `route.go` — tanpa `RegisterRoute`.
+
+Folder `_id` menjadi dynamic segment `:id` (pengganti `[id]` Next.js, karena Go tidak mengizinkan `[id]` di import path).
 
 ```go
+// app/users/route.go
 package users
 
 import (
     "myapi/models"
-    "github.com/lrndwy/gokil/framework"
     "github.com/lrndwy/gokil/views"
 )
-
-func init() {
-    framework.RegisterRoute("GET", "/users", GET)
-    framework.RegisterRoute("POST", "/users", POST)
-    framework.RegisterRoute("GET", "/users/:id", GETByID)
-    framework.RegisterRoute("PUT", "/users/:id", PUT)
-    framework.RegisterRoute("DELETE", "/users/:id", DELETE)
-}
 
 func GET(ctx *views.Context) error {
     users, err := models.Query[models.User]().All()
@@ -87,6 +88,14 @@ func POST(ctx *views.Context) error {
     return ctx.Success(201, "user created", user)
 }
 ```
+
+Setelah menambah/mengubah folder route, jalankan:
+
+```bash
+gokil generateroutes
+```
+
+(`gokil build` dan `gokil startproject` juga menjalankan ini otomatis.)
 
 ## ORM with Generics
 
@@ -115,6 +124,7 @@ go install github.com/lrndwy/gokil/cmd/gokil@latest
 gokil startproject <name>   # Buat project baru
 gokil compose               # Generate/update docker-compose.yml + Dockerfile (di project)
 gokil build                 # Compile project jadi ./bin/<project>
+gokil generateroutes        # Generate app/register.go dari app/**/route.go
 gokil postman               # Generate Postman collection dari API endpoints
 gokil doctor                # Validasi konfigurasi (dari project)
 gokil version

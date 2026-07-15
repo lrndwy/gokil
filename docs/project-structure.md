@@ -11,13 +11,18 @@ Project hasil `gokil startproject` umumnya seperti ini:
 myapi/
 ├── cmd/myapi/main.go
 ├── settings.go
-├── urls.go
 ├── models/
-│   └── models.go
-├── views/
-│   ├── user.go
-│   ├── post.go
-│   └── tag.go
+│   ├── models.go
+│   └── helpers.go
+├── app/
+│   ├── register.go          # generated
+│   ├── users/
+│   │   ├── route.go
+│   │   └── _id/route.go
+│   └── posts/
+│       ├── route.go
+│       └── _id/route.go
+├── jobs/cron.go
 ├── migrations/
 ├── storage/
 ├── docker-compose.yml        # opsional
@@ -29,20 +34,16 @@ myapi/
 
 Semua konfigurasi aplikasi dibaca dari `settings.go`, lalu bisa dioverride dengan environment variables `GOKIL_*`.
 
-### `urls.go`
+### `app/`
 
-Definisi route (URL patterns). Contoh:
+File-based routing ala Next.js. Path URL diambil dari folder; fungsi `GET`/`POST`/`PUT`/`PATCH`/`DELETE` di `route.go` menjadi handler.
 
-```go
-r.GET("/api/health/", app.Wrap(views.HealthCheck))
-r.GET("/api/users/", app.Wrap(views.UserList))
-```
+- `app/users/route.go` → `/users`
+- `app/users/_id/route.go` → `/users/:id` (`_param` = dynamic segment)
 
-### `views/`
+Jalankan `gokil generateroutes` setelah menambah folder route (otomatis juga saat `startproject` / `build`). File `app/register.go` digenerate; jangan diedit manual.
 
-Handler REST API. Disarankan gunakan helper `views` agar kodenya singkat dan konsisten.
+### `models/`
 
-### `models/models.go`
-
-Semua model aplikasi, plus `orm.RegisterModels(...)` di `init()`.
-
+- `models.go` — semua model aplikasi + `orm.RegisterModels(...)` di `init()`
+- `helpers.go` — re-export `Query` / `Create` / `Save` / `Delete` dari framework

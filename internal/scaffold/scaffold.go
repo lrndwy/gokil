@@ -9,6 +9,7 @@ import (
 	"text/template"
 
 	"github.com/lrndwy/gokil/cliui"
+	"github.com/lrndwy/gokil/internal/routegen"
 	"github.com/lrndwy/gokil/version"
 )
 
@@ -57,14 +58,17 @@ func Create(opts Options) error {
 	sp.Start("Creating project files")
 
 	files := map[string]string{
-		"go.mod":              goModTemplate,
-		"settings.go":         settingsTemplate,
-		"models/models.go":    modelsTemplate,
-		"jobs/cron.go":        cronJobsTemplate,
-		"app/users/route.go":  appUsersTemplate,
-		"app/posts/route.go":  appPostsTemplate,
-		".env.example":        envExampleTemplate,
-		".gitignore":          gitignoreTemplate,
+		"go.mod":                     goModTemplate,
+		"settings.go":                settingsTemplate,
+		"models/models.go":           modelsTemplate,
+		"models/helpers.go":          modelsHelpersTemplate,
+		"jobs/cron.go":               cronJobsTemplate,
+		"app/users/route.go":         appUsersRouteTemplate,
+		"app/users/_id/route.go":     appUsersIDRouteTemplate,
+		"app/posts/route.go":         appPostsRouteTemplate,
+		"app/posts/_id/route.go":     appPostsIDRouteTemplate,
+		".env.example":               envExampleTemplate,
+		".gitignore":                 gitignoreTemplate,
 		filepath.Join("cmd", name, "main.go"): mainTemplate,
 	}
 
@@ -76,6 +80,10 @@ func Create(opts Options) error {
 		if err := renderTemplate(fullPath, tmpl, templateData); err != nil {
 			return err
 		}
+	}
+
+	if _, _, err := routegen.Generate(dir); err != nil {
+		return fmt.Errorf("generateroutes: %w", err)
 	}
 
 	if templateData.Infra.NeedsDockerCompose() {
@@ -217,21 +225,33 @@ type Tag struct {
 }
 `
 
-const appUsersTemplate = `package users
+const modelsHelpersTemplate = `package models
+
+import gokil "github.com/lrndwy/gokil/models"
+
+func Query[T any]() *gokil.QuerySet[T] {
+	return gokil.Query[T]()
+}
+
+func Create[T any](instance *T) error {
+	return gokil.Create(instance)
+}
+
+func Save[T any](instance *T) error {
+	return gokil.Save(instance)
+}
+
+func Delete[T any](id any) error {
+	return gokil.Delete[T](id)
+}
+`
+
+const appUsersRouteTemplate = `package users
 
 import (
 	"{{.ModPath}}/models"
-	"github.com/lrndwy/gokil/framework"
 	"github.com/lrndwy/gokil/views"
 )
-
-func init() {
-	framework.RegisterRoute("GET", "/users", GET)
-	framework.RegisterRoute("POST", "/users", POST)
-	framework.RegisterRoute("GET", "/users/:id", GETByID)
-	framework.RegisterRoute("PUT", "/users/:id", PUT)
-	framework.RegisterRoute("DELETE", "/users/:id", DELETE)
-}
 
 func GET(ctx *views.Context) error {
 	users, err := models.Query[models.User]().PrefetchRelated("Posts").All()
@@ -255,8 +275,16 @@ func POST(ctx *views.Context) error {
 	}
 	return ctx.Success(201, "user created", user)
 }
+`
 
-func GETByID(ctx *views.Context) error {
+const appUsersIDRouteTemplate = `package id
+
+import (
+	"{{.ModPath}}/models"
+	"github.com/lrndwy/gokil/views"
+)
+
+func GET(ctx *views.Context) error {
 	user, err := models.Query[models.User]().PrefetchRelated("Posts").Filter("id", ctx.Param("id")).First()
 	if err != nil {
 		return ctx.NotFound()
@@ -290,22 +318,13 @@ func DELETE(ctx *views.Context) error {
 }
 `
 
-const appPostsTemplate = `package posts
+const appPostsRouteTemplate = `package posts
 
 import (
 	"{{.ModPath}}/models"
-	"github.com/lrndwy/gokil/framework"
 	"github.com/lrndwy/gokil/orm"
 	"github.com/lrndwy/gokil/views"
 )
-
-func init() {
-	framework.RegisterRoute("GET", "/posts", GET)
-	framework.RegisterRoute("POST", "/posts", POST)
-	framework.RegisterRoute("GET", "/posts/:id", GETByID)
-	framework.RegisterRoute("PUT", "/posts/:id", PUT)
-	framework.RegisterRoute("DELETE", "/posts/:id", DELETE)
-}
 
 func GET(ctx *views.Context) error {
 	posts, err := models.Query[models.Post]().SelectRelated("Author").All()
@@ -335,8 +354,16 @@ func POST(ctx *views.Context) error {
 	}
 	return ctx.Success(201, "post created", post)
 }
+`
 
-func GETByID(ctx *views.Context) error {
+const appPostsIDRouteTemplate = `package id
+
+import (
+	"{{.ModPath}}/models"
+	"github.com/lrndwy/gokil/views"
+)
+
+func GET(ctx *views.Context) error {
 	post, err := models.Query[models.Post]().SelectRelated("Author").PrefetchRelated("Tags").Filter("id", ctx.Param("id")).First()
 	if err != nil {
 		return ctx.NotFound()
@@ -350,8 +377,8 @@ func PUT(ctx *views.Context) error {
 		return ctx.NotFound()
 	}
 	var body struct {
-		Title    string ` + "`" + `json:"title"` + "`" + `
-		Content  string ` + "`" + `json:"content"` + "`" + `
+		Title   string ` + "`" + `json:"title"` + "`" + `
+		Content string ` + "`" + `json:"content"` + "`" + `
 	}
 	if err := ctx.Bind(&body); err != nil {
 		return ctx.Error(400, err.Error())
@@ -380,10 +407,10 @@ import (
 	"log"
 	"os"
 
+	"{{.ModPath}}"
+	_ "{{.ModPath}}/app"
 	"{{.ModPath}}/jobs"
 	_ "{{.ModPath}}/models"
-	_ "{{.ModPath}}/app/users"
-	_ "{{.ModPath}}/app/posts"
 	"github.com/lrndwy/gokil/cron"
 	"github.com/lrndwy/gokil/cliui"
 	"github.com/lrndwy/gokil/framework"

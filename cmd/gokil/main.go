@@ -11,6 +11,7 @@ import (
 
 	"github.com/lrndwy/gokil/cliui"
 	"github.com/lrndwy/gokil/config"
+	"github.com/lrndwy/gokil/internal/routegen"
 	"github.com/lrndwy/gokil/internal/scaffold"
 	"github.com/lrndwy/gokil/migration"
 	"github.com/lrndwy/gokil/orm"
@@ -36,6 +37,10 @@ func main() {
 		}
 	case "build":
 		if err := buildCmd(os.Args[2:]); err != nil {
+			log.Fatal(err)
+		}
+	case "generateroutes":
+		if err := generateroutesCmd(os.Args[2:]); err != nil {
 			log.Fatal(err)
 		}
 	case "serve":
@@ -438,6 +443,24 @@ func composeCmd(args []string) error {
 	return nil
 }
 
+func generateroutesCmd(args []string) error {
+	flags := flag.NewFlagSet("generateroutes", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	dir := flags.String("dir", ".", "project root directory")
+	_ = flags.Parse(args)
+
+	sp := cliui.NewSpinner(os.Stdout)
+	sp.Start("Generating routes from app/")
+
+	out, n, err := routegen.Generate(*dir)
+	if err != nil {
+		sp.Fail("Generating routes from app/")
+		return err
+	}
+	sp.Success(fmt.Sprintf("Wrote %s (%d route(s))", out, n))
+	return nil
+}
+
 func buildCmd(args []string) error {
 	flags := flag.NewFlagSet("build", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
@@ -450,6 +473,10 @@ func buildCmd(args []string) error {
 	p, err := detectProjectName(*project)
 	if err != nil {
 		return err
+	}
+
+	if _, _, err := routegen.Generate("."); err != nil {
+		return fmt.Errorf("generateroutes: %w", err)
 	}
 
 	output := *out
@@ -503,7 +530,7 @@ func postmanCmd(args []string) error {
 	sp.Success(fmt.Sprintf("Found %d endpoint(s)", len(routes)))
 
 	if len(routes) == 0 {
-		cliui.Warnf("No routes found in urls.go")
+		cliui.Warnf("No routes found in app/")
 		return nil
 	}
 
@@ -532,6 +559,7 @@ func usage() {
                           --redis / --no-redis
   compose              Generate/update docker-compose.yml with gokil service
   build                Compile project binary (from project root)
+  generateroutes       Generate app/register.go from app/**/route.go
   postman              Generate Postman collection from API endpoints
                           --project <name>
                           --output <path>

@@ -1,0 +1,284 @@
+package routegen
+
+import (
+	"bytes"
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+)
+
+var httpMethods = map[string]bool{
+	"GET":     true,
+	"POST":    true,
+	"PUT":     true,
+	"PATCH":   true,
+	"DELETE":  true,
+	"HEAD":    true,
+	"OPTIONS": true,
+}
+
+// Route describes one HTTP handler discovered from app/**/route.go.
+type Route struct {
+	Method      string
+	Path        string
+	ImportPath  string
+	ImportAlias string
+	Handler     string // e.g. GET
+	PackageName string
+}
+
+// Generate scans projectDir/app for route.go files and writes app/register.go.
+func Generate(projectDir string) (string, int, error) {
+	modPath, err := readModulePath(projectDir)
+	if err != nil {
+		return "", 0, err
+	}
+
+	appDir := filepath.Join(projectDir, "app")
+	routes, err := Scan(appDir, modPath)
+	if err != nil {
+		return "", 0, err
+	}
+
+	outPath := filepath.Join(appDir, "register.go")
+	src, err := Render(modPath, routes)
+	if err != nil {
+		return "", 0, err
+	}
+	if err := os.MkdirAll(appDir, 0o755); err != nil {
+		return "", 0, err
+	}
+	if err := os.WriteFile(outPath, src, 0o644); err != nil {
+		return "", 0, err
+	}
+	return outPath, len(routes), nil
+}
+
+// Scan finds route handlers under appDir.
+func Scan(appDir, modPath string) ([]Route, error) {
+	info, err := os.Stat(appDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("%s is not a directory", appDir)
+	}
+
+	var routes []Route
+	err = filepath.WalkDir(appDir, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() {
+			if d.Name() == "vendor" || strings.HasPrefix(d.Name(), ".") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.Name() != "route.go" {
+			return nil
+		}
+
+		relDir, err := filepath.Rel(appDir, filepath.Dir(path))
+		if err != nil {
+			return err
+		}
+		if relDir == "." {
+			return nil // skip app/route.go at root if any
+		}
+
+		pkgName, methods, err := parseRouteFile(path)
+		if err != nil {
+			return fmt.Errorf("%s: %w", path, err)
+		}
+		if len(methods) == 0 {
+			return nil
+		}
+
+		urlPath := folderToURL(relDir)
+		importPath := modPath + "/app/" + filepath.ToSlash(relDir)
+		alias := importAlias(relDir)
+
+		for _, method := range methods {
+			routes = append(routes, Route{
+				Method:      method,
+				Path:        urlPath,
+				ImportPath:  importPath,
+				ImportAlias: alias,
+				Handler:     method,
+				PackageName: pkgName,
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	sort.Slice(routes, func(i, j int) bool {
+		if routes[i].Path != routes[j].Path {
+			return routes[i].Path < routes[j].Path
+		}
+		return methodOrder(routes[i].Method) < methodOrder(routes[j].Method)
+	})
+	return routes, nil
+}
+
+// folderToURL converts app-relative folder path to URL path.
+// Segments starting with "_" become ":name" (e.g. users/_id → /users/:id).
+func folderToURL(relDir string) string {
+	parts := strings.Split(filepath.ToSlash(relDir), "/")
+	segs := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p == "" || p == "." {
+			continue
+		}
+		if strings.HasPrefix(p, "_") && len(p) > 1 {
+			segs = append(segs, ":"+p[1:])
+			continue
+		}
+		segs = append(segs, p)
+	}
+	if len(segs) == 0 {
+		return "/"
+	}
+	return "/" + strings.Join(segs, "/")
+}
+
+func importAlias(relDir string) string {
+	parts := strings.Split(filepath.ToSlash(relDir), "/")
+	cleaned := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p == "" || p == "." {
+			continue
+		}
+		p = strings.TrimPrefix(p, "_")
+		p = strings.ReplaceAll(p, "-", "_")
+		cleaned = append(cleaned, p)
+	}
+	alias := "app_" + strings.Join(cleaned, "_")
+	if alias == "app_" {
+		return "app_root"
+	}
+	return alias
+}
+
+func parseRouteFile(path string) (pkgName string, methods []string, err error) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, path, nil, 0)
+	if err != nil {
+		return "", nil, err
+	}
+	pkgName = f.Name.Name
+	seen := make(map[string]bool)
+	for _, decl := range f.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Recv != nil || fn.Name == nil {
+			continue
+		}
+		name := fn.Name.Name
+		if !httpMethods[name] || seen[name] {
+			continue
+		}
+		seen[name] = true
+		methods = append(methods, name)
+	}
+	sort.Slice(methods, func(i, j int) bool {
+		return methodOrder(methods[i]) < methodOrder(methods[j])
+	})
+	return pkgName, methods, nil
+}
+
+func methodOrder(method string) int {
+	switch method {
+	case "GET":
+		return 0
+	case "POST":
+		return 1
+	case "PUT":
+		return 2
+	case "PATCH":
+		return 3
+	case "DELETE":
+		return 4
+	case "HEAD":
+		return 5
+	case "OPTIONS":
+		return 6
+	default:
+		return 7
+	}
+}
+
+// Render produces the source for app/register.go.
+func Render(modPath string, routes []Route) ([]byte, error) {
+	var buf bytes.Buffer
+	buf.WriteString("// Code generated by gokil generateroutes; DO NOT EDIT.\n\n")
+	buf.WriteString("package app\n\n")
+
+	if len(routes) == 0 {
+		buf.WriteString("func init() {}\n")
+		return buf.Bytes(), nil
+	}
+
+	imports := uniqueImports(routes)
+	buf.WriteString("import (\n")
+	for _, imp := range imports {
+		buf.WriteString("\t" + imp.Alias + " " + strconv.Quote(imp.Path) + "\n")
+	}
+	buf.WriteString("\t\"github.com/lrndwy/gokil/framework\"\n")
+	buf.WriteString(")\n\n")
+
+	buf.WriteString("func init() {\n")
+	for _, r := range routes {
+		buf.WriteString(fmt.Sprintf(
+			"\tframework.RegisterRoute(%q, %q, %s.%s)\n",
+			r.Method, r.Path, r.ImportAlias, r.Handler,
+		))
+	}
+	buf.WriteString("}\n")
+	return buf.Bytes(), nil
+}
+
+type imp struct {
+	Alias string
+	Path  string
+}
+
+func uniqueImports(routes []Route) []imp {
+	seen := make(map[string]string) // path -> alias
+	for _, r := range routes {
+		if _, ok := seen[r.ImportPath]; !ok {
+			seen[r.ImportPath] = r.ImportAlias
+		}
+	}
+	out := make([]imp, 0, len(seen))
+	for path, alias := range seen {
+		out = append(out, imp{Alias: alias, Path: path})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	return out
+}
+
+func readModulePath(projectDir string) (string, error) {
+	data, err := os.ReadFile(filepath.Join(projectDir, "go.mod"))
+	if err != nil {
+		return "", fmt.Errorf("read go.mod: %w", err)
+	}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "module ") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "module ")), nil
+		}
+	}
+	return "", fmt.Errorf("module path not found in go.mod")
+}

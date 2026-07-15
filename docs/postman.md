@@ -5,7 +5,7 @@ nav_order: 8
 
 ## Postman Collection Generator
 
-Gokil dapat menghasilkan **Postman Collection v2.1.0** secara otomatis dari source code project. Parser mengekstrak route, request body, path variables, dan query parameters dari file `urls.go` dan `views/*.go`.
+Gokil dapat menghasilkan **Postman Collection v2.1.0** secara otomatis dari source code project. Parser mengekstrak route, request body, path variables, dan query parameters dari `app/**/route.go` (dan fallback legacy `urls.go` / `views/`).
 
 ## Cara Pakai
 
@@ -43,25 +43,19 @@ gokil postman --project myapi
 
 ### Routes
 
-Semua route yang terdaftar di `urls.go` akan di-parse otomatis:
+Semua route dari folder `app/` akan di-parse otomatis:
 
-```go
-// urls.go
-func URLPatterns(app *framework.App, r *router.Router) {
-    r.GET("/api/users/", app.Wrap(views.UserList))
-    r.POST("/api/users/", app.Wrap(views.UserCreate))
-    r.GET("/api/users/:id", app.Wrap(views.UserDetail))
-    r.PUT("/api/users/:id", app.Wrap(views.UserUpdate))
-    r.DELETE("/api/users/:id", app.Wrap(views.UserDelete))
-}
+```
+app/users/route.go       → GET, POST /users
+app/users/_id/route.go   → GET, PUT, DELETE /users/:id
 ```
 
 Akan menghasilkan endpoint di collection:
-- `GET /api/users/`
-- `POST /api/users/`
-- `GET /api/users/:id`
-- `PUT /api/users/:id`
-- `DELETE /api/users/:id`
+- `GET /users`
+- `POST /users`
+- `GET /users/:id`
+- `PUT /users/:id`
+- `DELETE /users/:id`
 
 ### Request Body (POST/PUT/PATCH)
 
@@ -223,8 +217,7 @@ Ubah nilai `token` di Postman setelah import untuk testing dengan auth.
 
 ## Limitasi
 
-- Parser menggunakan **static analysis** (regex), bukan Go AST parsing
-- Hanya mendeteksi pattern `var input struct { ... }` untuk request body
+- Route discovery memakai scan `app/**/route.go` (dan fallback register.go / urls.go)
+- Hanya mendeteksi pattern `var input struct` / `var body struct` untuk request body
 - Tidak mendeteksi body dari `map[string]any` atau variabel non-struct
 - Tidak mendeteksi authentication middleware (semua endpoint diasumsikan butuh Bearer token)
-- Handler yang menggunakan `app.Wrap()` harus mengikuti pola `views.HandlerName` di `urls.go`
