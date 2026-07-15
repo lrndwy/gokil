@@ -36,6 +36,12 @@ func (q *QuerySet[T]) PrefetchRelated(fields ...string) *QuerySet[T] {
 	return &QuerySet[T]{qs: q.qs.PrefetchRelated(fields...)}
 }
 
+// Only restricts SELECT to the given fields (Go name or column name).
+// The primary key is always included.
+func (q *QuerySet[T]) Only(fields ...string) *QuerySet[T] {
+	return &QuerySet[T]{qs: q.qs.Only(fields...)}
+}
+
 func (q *QuerySet[T]) All() ([]*T, error) {
 	return q.qs.All()
 }

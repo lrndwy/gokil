@@ -104,6 +104,9 @@ gokil generateroutes
 users, err := models.Query[models.User]().Filter("name", "John").All()
 user, err := models.Query[models.User]().Filter("id", id).First()
 
+// Only selected columns (PK always included)
+users, err := models.Query[models.User]().Only("name", "email").All()
+
 // Create
 err := models.Create(&models.User{Name: "John"})
 

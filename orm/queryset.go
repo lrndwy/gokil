@@ -10,13 +10,14 @@ import (
 )
 
 type QuerySet[T any] struct {
-	ctx            context.Context
-	meta           *ModelMeta
-	filters        []filterClause
-	orderBy        []string
-	limit          int
-	offset         int
-	selectRelated  []string
+	ctx             context.Context
+	meta            *ModelMeta
+	filters         []filterClause
+	orderBy         []string
+	limit           int
+	offset          int
+	only            []string
+	selectRelated   []string
 	prefetchRelated []string
 }
 
@@ -57,13 +58,24 @@ func (qs *QuerySet[T]) PrefetchRelated(fields ...string) *QuerySet[T] {
 	return qs
 }
 
+// Only restricts SELECT to the given model fields (Go name or column name).
+// The primary key is always included. Relation names that are BelongsTo resolve
+// to their FK column (e.g. Only("Author") → author_id).
+func (qs *QuerySet[T]) Only(fields ...string) *QuerySet[T] {
+	qs.only = append([]string(nil), fields...)
+	return qs
+}
+
 func (qs *QuerySet[T]) All() ([]*T, error) {
 	conn := connFromContext(qs.ctx)
 	if conn == nil {
 		return nil, fmt.Errorf("no database in context")
 	}
 
-	query, args := qs.buildSelect()
+	query, args, err := qs.buildSelect()
+	if err != nil {
+		return nil, err
+	}
 	rows, err := conn.QueryContext(qs.ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -205,8 +217,11 @@ func (qs *QuerySet[T]) Delete() (int64, error) {
 	return result.RowsAffected()
 }
 
-func (qs *QuerySet[T]) buildSelect() (string, []any) {
-	cols := qs.selectColumns()
+func (qs *QuerySet[T]) buildSelect() (string, []any, error) {
+	cols, err := qs.selectColumns()
+	if err != nil {
+		return "", nil, err
+	}
 	where, args := qs.buildWhere()
 	query := fmt.Sprintf("SELECT %s FROM %s%s", strings.Join(cols, ", "), quoteIdent(qs.meta.TableName), where)
 
@@ -227,18 +242,110 @@ func (qs *QuerySet[T]) buildSelect() (string, []any) {
 	if qs.offset > 0 {
 		query += fmt.Sprintf(" OFFSET %d", qs.offset)
 	}
-	return query, args
+	return query, args, nil
 }
 
-func (qs *QuerySet[T]) selectColumns() []string {
-	cols := []string{}
+func (qs *QuerySet[T]) selectColumns() ([]string, error) {
+	if len(qs.only) == 0 {
+		cols := make([]string, 0, len(qs.meta.Fields))
+		for _, f := range qs.meta.Fields {
+			if f.IsRelation {
+				continue
+			}
+			cols = append(cols, quoteIdent(f.Column))
+		}
+		return cols, nil
+	}
+
+	wanted := map[string]bool{}
+	for _, name := range qs.only {
+		fm, err := qs.resolveOnlyField(name)
+		if err != nil {
+			return nil, err
+		}
+		wanted[fm.Column] = true
+	}
+
+	// Always include primary key so instances remain identifiable.
+	for _, f := range qs.meta.Fields {
+		if f.PrimaryKey {
+			wanted[f.Column] = true
+		}
+	}
+
+	// Include BelongsTo FK columns required by SelectRelated.
+	for _, relName := range qs.selectRelated {
+		fm, ok := qs.meta.FieldByName[relName]
+		if !ok {
+			continue
+		}
+		if fm.IsRelation && fm.Relation.Type == RelationBelongsTo {
+			if fk := qs.belongsToFKField(fm); fk != nil {
+				wanted[fk.Column] = true
+			}
+		}
+	}
+
+	cols := make([]string, 0, len(wanted))
 	for _, f := range qs.meta.Fields {
 		if f.IsRelation {
 			continue
 		}
-		cols = append(cols, quoteIdent(f.Column))
+		if wanted[f.Column] {
+			cols = append(cols, quoteIdent(f.Column))
+		}
 	}
-	return cols
+	if len(cols) == 0 {
+		return nil, fmt.Errorf("Only(): no selectable columns")
+	}
+	return cols, nil
+}
+
+func (qs *QuerySet[T]) resolveOnlyField(name string) (*FieldMeta, error) {
+	if fm, ok := qs.meta.FieldByName[name]; ok {
+		if fm.IsRelation {
+			if fm.Relation.Type == RelationBelongsTo {
+				if fk := qs.belongsToFKField(fm); fk != nil {
+					return fk, nil
+				}
+			}
+			return nil, fmt.Errorf("Only(): cannot select relation field %q", name)
+		}
+		return fm, nil
+	}
+	if fm, ok := qs.meta.FieldByColumn[name]; ok {
+		if fm.IsRelation {
+			return nil, fmt.Errorf("Only(): cannot select relation field %q", name)
+		}
+		return fm, nil
+	}
+	// Allow snake_case of a Go field name even if column map key differs.
+	col := toColumnName(name)
+	if fm, ok := qs.meta.FieldByColumn[col]; ok && !fm.IsRelation {
+		return fm, nil
+	}
+	return nil, fmt.Errorf("Only(): unknown field %q on %s", name, qs.meta.Name)
+}
+
+func (qs *QuerySet[T]) belongsToFKField(rel *FieldMeta) *FieldMeta {
+	if rel == nil {
+		return nil
+	}
+	for i := range qs.meta.Fields {
+		f := &qs.meta.Fields[i]
+		if f.VirtualFK && f.RelationOwner == rel.Name {
+			return f
+		}
+	}
+	if fkName := rel.Relation.FKColumn; fkName != "" {
+		if fm, ok := qs.meta.FieldByName[fkName]; ok {
+			return fm
+		}
+		if fm, ok := qs.meta.FieldByColumn[toColumnName(fkName)]; ok {
+			return fm
+		}
+	}
+	return nil
 }
 
 func (qs *QuerySet[T]) buildWhere() (string, []any) {

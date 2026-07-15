@@ -42,6 +42,28 @@ items, err := orm.Objects[models.User](ctx).
 u, err := orm.Objects[models.User](ctx).Filter("id", 1).Get()
 ```
 
+### Only (partial columns)
+
+Ambil hanya kolom tertentu (lebih hemat jaringan/memori). Field boleh nama Go (`Name`) atau nama kolom (`name`). Primary key selalu ikut diselect.
+
+```go
+// ORM rendah
+users, err := orm.Objects[models.User](ctx).
+    Only("ID", "Name", "Email").
+    All()
+
+// Via helpers project (models.Query)
+users, err := models.Query[models.User]().
+    Only("name", "email").
+    All()
+```
+
+Catatan:
+- Field yang tidak disebut tetap ada di struct, tapi nilainya zero-value.
+- `Only("Author")` pada `BelongsTo` di-resolve ke FK (`author_id`).
+- Field relasi `HasMany` / `ManyMany` tidak bisa dipakai di `Only`.
+- Jika dipakai bersama `SelectRelated`, kolom FK relasi itu juga otomatis ikut diselect.
+
 ### SelectRelated / PrefetchRelated
 
 - `SelectRelated("Author")` untuk `BelongsTo` (join/load by ids)
