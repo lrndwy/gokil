@@ -3,6 +3,7 @@ package migration
 import (
 	"database/sql"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/lrndwy/gokil/orm"
@@ -215,9 +216,62 @@ func RenderColumn(f orm.FieldMeta) string {
 		parts = append(parts, "NOT NULL")
 	}
 	if strings.TrimSpace(f.Default) != "" {
-		parts = append(parts, "DEFAULT "+f.Default)
+		parts = append(parts, "DEFAULT "+formatDefaultSQL(f))
 	}
 	return strings.Join(parts, " ")
+}
+
+// formatDefaultSQL quotes string-like defaults so Postgres does not treat them as column refs.
+// e.g. default:system → DEFAULT 'system' (not DEFAULT system).
+func formatDefaultSQL(f orm.FieldMeta) string {
+	d := strings.TrimSpace(f.Default)
+	if d == "" {
+		return d
+	}
+	lower := strings.ToLower(d)
+	switch lower {
+	case "true", "false", "null":
+		return lower
+	}
+	if (strings.HasPrefix(d, "'") && strings.HasSuffix(d, "'")) ||
+		(strings.HasPrefix(d, "\"") && strings.HasSuffix(d, "\"")) {
+		return d
+	}
+	// Numeric literals stay unquoted.
+	if _, err := strconv.ParseFloat(d, 64); err == nil {
+		return d
+	}
+	switch f.FieldType {
+	case orm.FieldTypeString, orm.FieldTypeText, orm.FieldTypeUUID, orm.FieldTypeJSON:
+		return "'" + strings.ReplaceAll(d, "'", "''") + "'"
+	case orm.FieldTypeBoolean:
+		return lower
+	default:
+		// Stringy defaults on varchar columns often arrive as FieldTypeString; if not,
+		// still quote bare identifiers that are not SQL keywords/numbers.
+		if isBareIdent(d) {
+			return "'" + strings.ReplaceAll(d, "'", "''") + "'"
+		}
+		return d
+	}
+}
+
+func isBareIdent(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, r := range s {
+		if i == 0 {
+			if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && r != '_' {
+				return false
+			}
+			continue
+		}
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '_' {
+			return false
+		}
+	}
+	return true
 }
 
 func RenderM2MTable(m2m M2MTable) string {

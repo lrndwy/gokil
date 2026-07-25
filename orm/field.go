@@ -244,7 +244,12 @@ func parseFieldMeta(sf reflect.StructField) (*FieldMeta, error) {
 		return fm, nil
 	}
 
+	// Pointer-to-struct is treated as BelongsTo, except well-known scalar structs like time.Time.
 	if sf.Type.Kind() == reflect.Ptr && sf.Type.Elem().Kind() == reflect.Struct && sf.Type != reflect.TypeOf(BaseModel{}) {
+		if sf.Type.Elem() == reflect.TypeOf(time.Time{}) {
+			fm.FieldType = FieldTypeTimestamp
+			return fm, nil
+		}
 		fm.IsRelation = true
 		fm.Relation.Type = RelationBelongsTo
 		fm.Relation.FKColumn = sf.Name + "ID"
