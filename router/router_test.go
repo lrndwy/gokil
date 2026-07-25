@@ -3,6 +3,7 @@ package router_test
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/lrndwy/gokil/router"
@@ -31,5 +32,8 @@ func TestNotFound(t *testing.T) {
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"success":false`) {
+		t.Fatalf("expected success:false envelope, got %s", rec.Body.String())
 	}
 }

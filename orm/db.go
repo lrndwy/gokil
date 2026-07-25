@@ -72,7 +72,7 @@ func WithTx(ctx context.Context, fn func(ctx context.Context, tx *Tx) error) err
 	}
 
 	wrapped := &Tx{Tx: tx, db: db}
-	txCtx := context.WithValue(ctx, dbContextKey{}, &DB{DB: db.DB})
+	txCtx := withTxContext(ctx, wrapped)
 
 	if err := fn(txCtx, wrapped); err != nil {
 		_ = tx.Rollback()

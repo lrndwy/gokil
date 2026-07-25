@@ -134,5 +134,5 @@ func normalizePath(path string) string {
 func writeNotFound(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusNotFound)
-	_, _ = w.Write([]byte(`{"error":"not found"}`))
+	_, _ = w.Write([]byte(`{"success":false,"message":"not found"}`))
 }

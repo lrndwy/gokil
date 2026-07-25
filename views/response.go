@@ -7,16 +7,16 @@ import (
 )
 
 type Response struct {
-	Status  int    `json:"status"`
+	Success bool   `json:"success"`
 	Message string `json:"message"`
 	Data    any    `json:"data"`
 }
 
 type PaginatedResponse struct {
-	Status  int      `json:"status"`
-	Message string   `json:"message"`
-	Data    any      `json:"data"`
-	Meta    PageMeta `json:"meta"`
+	Success bool      `json:"success"`
+	Message string    `json:"message"`
+	Data    any       `json:"data"`
+	Meta    PageMeta  `json:"meta"`
 }
 
 type PageMeta struct {
@@ -36,7 +36,7 @@ func (c *Context) Created(message string, data any) error {
 
 func (c *Context) Paginated(message string, data any, meta PageMeta) error {
 	return c.JSON(PaginatedResponse{
-		Status:  http.StatusOK,
+		Success: true,
 		Message: message,
 		Data:    orm.ProjectForJSON(data),
 		Meta:    meta,

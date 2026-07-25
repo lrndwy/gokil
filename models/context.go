@@ -26,12 +26,21 @@ func ClearContext() {
 func gid() uint64 {
 	var buf [64]byte
 	n := runtime.Stack(buf[:], false)
+	// stack starts with "goroutine <id> "
+	const prefix = "goroutine "
+	if n < len(prefix)+1 {
+		return 0
+	}
 	var id uint64
-	for s := buf[6]; s < byte(n); s++ {
-		if buf[s] == ' ' {
+	for i := len(prefix); i < n; i++ {
+		c := buf[i]
+		if c == ' ' {
 			break
 		}
-		id = id*10 + uint64(buf[s]-'0')
+		if c < '0' || c > '9' {
+			break
+		}
+		id = id*10 + uint64(c-'0')
 	}
 	return id
 }

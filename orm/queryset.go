@@ -19,6 +19,7 @@ type QuerySet[T any] struct {
 	only            []string
 	selectRelated   []string
 	prefetchRelated []string
+	forUpdate       bool
 }
 
 type filterClause struct {
@@ -63,6 +64,11 @@ func (qs *QuerySet[T]) PrefetchRelated(fields ...string) *QuerySet[T] {
 // to their FK column (e.g. Only("Author") → author_id).
 func (qs *QuerySet[T]) Only(fields ...string) *QuerySet[T] {
 	qs.only = append([]string(nil), fields...)
+	return qs
+}
+
+func (qs *QuerySet[T]) ForUpdate() *QuerySet[T] {
+	qs.forUpdate = true
 	return qs
 }
 
@@ -248,6 +254,9 @@ func (qs *QuerySet[T]) buildSelect() (string, []any, error) {
 	}
 	if qs.offset > 0 {
 		query += fmt.Sprintf(" OFFSET %d", qs.offset)
+	}
+	if qs.forUpdate {
+		query += " FOR UPDATE"
 	}
 	return query, args, nil
 }

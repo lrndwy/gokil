@@ -37,8 +37,11 @@ func TestHandleErrorHTTPError(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
-	if body["error"] != "invalid json" {
-		t.Fatalf("error = %v", body["error"])
+	if body["success"] != false {
+		t.Fatalf("success = %v", body["success"])
+	}
+	if body["message"] != "invalid json" {
+		t.Fatalf("message = %v", body["message"])
 	}
 }
 
@@ -81,15 +84,15 @@ func TestResponseEnvelope(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var body views.Response
+	var body map[string]any
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
-	if body.Status != http.StatusOK {
-		t.Fatalf("status = %d", body.Status)
+	if body["success"] != true {
+		t.Fatalf("success = %v", body["success"])
 	}
-	if body.Message != "users retrieved" {
-		t.Fatalf("message = %q", body.Message)
+	if body["message"] != "users retrieved" {
+		t.Fatalf("message = %v", body["message"])
 	}
 }
 
@@ -100,12 +103,15 @@ func TestResourceOK(t *testing.T) {
 	if err := ctx.ResourceOK("retrieved", "user", map[string]string{"name": "Ali"}); err != nil {
 		t.Fatal(err)
 	}
-	var body views.Response
+	var body map[string]any
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
-	if body.Message != "user retrieved" {
-		t.Fatalf("message = %q", body.Message)
+	if body["success"] != true {
+		t.Fatalf("success = %v", body["success"])
+	}
+	if body["message"] != "user retrieved" {
+		t.Fatalf("message = %v", body["message"])
 	}
 }
 
@@ -135,6 +141,9 @@ func TestPaginatedResponse(t *testing.T) {
 	var body views.PaginatedResponse
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatal(err)
+	}
+	if !body.Success {
+		t.Fatal("expected success=true")
 	}
 	if body.Meta.Total != 42 {
 		t.Fatalf("total = %d", body.Meta.Total)

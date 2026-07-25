@@ -60,14 +60,6 @@ func New(settings config.Settings) (*App, error) {
 	return app, nil
 }
 
-func (a *App) requestMiddleware() func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			next.ServeHTTP(w, r)
-		})
-	}
-}
-
 func (a *App) Wrap(handler views.Handler) router.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request, params map[string]string) {
 		ctx := &views.Context{
@@ -139,5 +131,3 @@ func (a *App) Close() error {
 	}
 	return nil
 }
-
-type DBContextKey struct{}
