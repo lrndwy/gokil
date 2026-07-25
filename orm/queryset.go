@@ -565,10 +565,22 @@ func setAutoTimestamps(instance any, now time.Time) {
 }
 
 func fieldValue(v reflect.Value, name string) any {
+	// Prefer a concrete FK scalar (e.g. RoleID int64) over BelongsTo.ID.
+	// belongsToFKValue must only fill VirtualFK columns where no scalar exists;
+	// otherwise RoleID=1 is overwritten by Role.ID=0 and FK inserts fail.
+	f := structFieldValue(v, name)
+	if f.IsValid() && !isBelongsToType(f.Type()) && !isHasManyType(f.Type()) && !isManyManyType(f.Type()) {
+		if f.Kind() == reflect.Ptr {
+			if f.IsNil() {
+				return nil
+			}
+			return f.Elem().Interface()
+		}
+		return f.Interface()
+	}
 	if id, ok := belongsToFKValue(v, name); ok {
 		return id
 	}
-	f := structFieldValue(v, name)
 	if !f.IsValid() {
 		return nil
 	}
