@@ -3,9 +3,9 @@ package orm
 import "time"
 
 type BaseModel struct {
-	ID        int64     `orm:"pk;auto"`
-	CreatedAt time.Time `orm:"auto_now_add"`
-	UpdatedAt time.Time `orm:"auto_now"`
+	ID        int64     `orm:"pk;auto" json:"id"`
+	CreatedAt time.Time `orm:"auto_now_add" json:"created_at"`
+	UpdatedAt time.Time `orm:"auto_now" json:"updated_at"`
 }
 
 func (m *BaseModel) GetID() int64 {
